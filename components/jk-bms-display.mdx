@@ -1,0 +1,230 @@
+---
+title: "JK-BMS Display Port Monitor for ESPHome (RS485)"
+description: "Passively monitor a JK-BMS over the RS485 display port with ESPHome. Read-only access to cell voltages, pack state, temperatures, and protection flags."
+---
+
+The `jk_bms_display` component **passively monitors** a JK-BMS by tapping into the data stream on the **RS485 display port** — the same connector used by the BMS's own LCD panel. It is entirely read-only: no commands are ever sent to the BMS, making it a safe monitoring option that does not interfere with BMS operation.
+
+Because data is broadcast by the BMS periodically to drive the display, you only need to listen on the RS485 bus. An RS485-to-TTL adapter converts the differential signal to the UART levels accepted by the ESP32.
+
+<Note>
+  Requires ESPHome **2024.12.0** or newer. The component auto-loads `binary_sensor` and `sensor`. `MULTI_CONF = True` supports multiple BMS units on separate UART ports.
+</Note>
+
+## Supported Hardware
+
+This component is compatible with JK-BMS models that have a dedicated display connector, including:
+
+- **JK-BD6A2xS10P**
+- **JK-BxA24SxxP**
+
+Other models with a 6-pin display port using RS-485 should also work.
+
+## Wiring
+
+The display port provides a differential RS-485 signal. An RS-485-to-TTL module bridges the signal to the ESP32 UART RX pin. The port runs at **2400 baud**. No TX connection is needed — this is receive-only.
+
+```
+JK-BMS display port (6-pin)          RS-485-to-TTL module     ESP32
+─────────────────────────────────────────────────────────────────────
+Pin A  ──────────────────────────── A+                GND ─── GND
+Pin B  ──────────────────────────── B-                RXD ─── RX pin
+Pin VCC ─────────────────────────── VCC               VCC ─── 5V
+Pin GND ─────────────────────────── GND                        
+```
+
+<Warning>
+  Do **not** connect TXD from the RS-485 adapter to any ESP32 pin. This is a passive monitor — any accidental transmission could corrupt the BMS display data or cause unintended BMS behavior.
+</Warning>
+
+<Info>
+  The K+ and K- pins on the display port are for the keypad input — they are not needed for this integration.
+</Info>
+
+## Configuration
+
+<Steps>
+  <Step title="Connect the RS-485-to-TTL adapter">
+    Wire A+ and B- from the display port to the adapter, connect GND and 5V, and run the adapter's RXD to your chosen ESP32 GPIO.
+  </Step>
+  <Step title="Declare the UART bus">
+    Configure the UART at 2400 baud with only an RX pin — no TX pin is required.
+  </Step>
+  <Step title="Declare jk_bms_display">
+    Reference the UART bus by ID.
+  </Step>
+  <Step title="Add sensor and binary_sensor platforms">
+    Each platform block references the `jk_bms_display` hub.
+  </Step>
+</Steps>
+
+## Complete Example
+
+The following configuration is drawn from `esp32-display-example.yaml` in the upstream repository.
+
+```yaml
+substitutions:
+  name: jk-bms-display
+  device_description: "Monitor a JK-BMS using the display port (RS485)"
+  external_components_source: github://syssi/esphome-jk-bms@main
+  rx_pin: GPIO17
+
+esphome:
+  name: ${name}
+  friendly_name: ${name}
+  comment: ${device_description}
+  project:
+    name: "syssi.esphome-jk-bms"
+    version: 2.4.0
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: ${external_components_source}
+    refresh: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  platform: esphome
+
+logger:
+  level: DEBUG
+
+api:
+
+uart:
+  - id: uart_0
+    baud_rate: 2400
+    rx_pin: ${rx_pin}
+
+jk_bms_display:
+  - id: display0
+    uart_id: uart_0
+
+binary_sensor:
+  - platform: jk_bms_display
+    system_warning:
+      name: "system warning"
+    balancing_switch:
+      name: "balancing switch"
+    charging:
+      name: "charging"
+    discharging:
+      name: "discharging"
+    cell_voltage_undervoltage_protection:
+      name: "cell voltage undervoltage protection"
+    cell_voltage_overvoltage_protection:
+      name: "cell voltage overvoltage protection"
+    overcurrent_protection:
+      name: "overcurrent protection"
+    mosfet_overtemperature_protection:
+      name: "mosfet overtemperature protection"
+    battery_temperature_protection:
+      name: "battery temperature protection"
+    short_circuit_protection:
+      name: "short circuit protection"
+    coprocessor_communication_error:
+      name: "coprocessor communication error"
+    balancer_wire_resistance_too_high:
+      name: "balancer wire resistance too high"
+    cell_count_mismatch:
+      name: "cell count mismatch"
+
+sensor:
+  - platform: jk_bms_display
+    total_voltage:
+      name: "total voltage"
+    current:
+      name: "current"
+    power:
+      name: "power"
+    charging_power:
+      name: "charging power"
+    discharging_power:
+      name: "discharging power"
+    min_cell_voltage:
+      name: "min cell voltage"
+    max_cell_voltage:
+      name: "max cell voltage"
+    min_voltage_cell:
+      name: "min voltage cell"
+    max_voltage_cell:
+      name: "max voltage cell"
+    state_of_charge:
+      name: "state of charge"
+    delta_cell_voltage:
+      name: "delta cell voltage"
+    mosfet_temperature:
+      name: "mosfet temperature"
+    battery_temperature:
+      name: "battery temperature"
+    average_cell_voltage:
+      name: "average cell voltage"
+    cell_voltage_1:
+      name: "cell voltage 1"
+    # … cell_voltage_2 through cell_voltage_24
+```
+
+## Component Configuration
+
+<ParamField path="uart_id" type="string" required>
+  ID of the UART bus connected to the RS-485-to-TTL adapter. Must be configured at **2400 baud** with only an RX pin.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Optional ID used to reference this display monitor from sensor and binary_sensor platform blocks.
+</ParamField>
+
+<Note>
+  This component is **read-only**. There are no switch, number, or text sensor platforms — all control must go through the `jk_bms` (UART/Modbus) or `jk_bms_ble` (Bluetooth) component instead.
+</Note>
+
+## Supported Platforms
+
+### Sensor
+
+Cell voltages `cell_voltage_1` through `cell_voltage_24` are available (V, 3 decimal places).
+
+| Key | Unit | Notes |
+|-----|------|-------|
+| `total_voltage` | V | Total pack voltage |
+| `current` | A | Pack current (positive = charge) |
+| `power` | W | Total instantaneous power |
+| `charging_power` | W | Power delivered during charging |
+| `discharging_power` | W | Power consumed during discharging |
+| `state_of_charge` | % | Battery state of charge |
+| `min_cell_voltage` | V | Lowest cell voltage |
+| `max_cell_voltage` | V | Highest cell voltage |
+| `min_voltage_cell` | — | Index of lowest-voltage cell |
+| `max_voltage_cell` | — | Index of highest-voltage cell |
+| `delta_cell_voltage` | V | Voltage spread across cells |
+| `average_cell_voltage` | V | Mean cell voltage |
+| `mosfet_temperature` | °C | MOSFET/power tube temperature |
+| `battery_temperature` | °C | Battery pack temperature |
+| `cell_voltage_1` … `cell_voltage_24` | V | Individual cell voltages |
+
+### Binary Sensor
+
+All binary sensors carry the `diagnostic` entity category except `balancing_switch`, `charging`, and `discharging`.
+
+| Key | Category | Notes |
+|-----|----------|-------|
+| `charging` | — | Charging MOSFET active |
+| `discharging` | — | Discharging MOSFET active |
+| `balancing_switch` | — | Balancer enabled |
+| `system_warning` | diagnostic | General system warning flag |
+| `cell_voltage_undervoltage_protection` | diagnostic | UVP triggered |
+| `cell_voltage_overvoltage_protection` | diagnostic | OVP triggered |
+| `overcurrent_protection` | diagnostic | OCP triggered |
+| `mosfet_overtemperature_protection` | diagnostic | MOSFET OTP triggered |
+| `battery_temperature_protection` | diagnostic | Battery OTP triggered |
+| `short_circuit_protection` | diagnostic | SCP triggered |
+| `coprocessor_communication_error` | diagnostic | Internal co-processor communication failure |
+| `balancer_wire_resistance_too_high` | diagnostic | Balancer wire resistance fault |
+| `cell_count_mismatch` | diagnostic | Detected cell count differs from configured |

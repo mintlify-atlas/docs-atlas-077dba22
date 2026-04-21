@@ -1,0 +1,129 @@
+---
+title: "Integrate JK-BMS with Home Assistant via ESPHome"
+description: "Connect your JK-BMS to Home Assistant using the ESPHome native API. Covers auto-discovery, dashboard cards, and entity naming conventions."
+---
+
+The ESPHome native API is the recommended way to connect your JK-BMS device to Home Assistant. Once your ESP32 is flashed and on the network, Home Assistant automatically discovers it and imports all sensors, switches, and text sensors without any manual configuration. This page covers enabling the native API, understanding entity names, and building a Lovelace dashboard card.
+
+## Native API vs MQTT
+
+ESPHome supports two integration paths for Home Assistant: the native API and MQTT. For Home Assistant users, the native API is strongly preferred.
+
+<CardGroup cols={2}>
+  <Card title="Native API (recommended)" icon="house">
+    Two-way encrypted communication directly between Home Assistant and the ESP device. Auto-discovery works out of the box. No broker required.
+  </Card>
+  <Card title="MQTT" icon="server">
+    Publish/subscribe via a broker. Useful for non-Home Assistant systems, Node-RED, or multi-consumer setups. Requires a running MQTT broker.
+  </Card>
+</CardGroup>
+
+<Tip>
+  The ESPHome documentation lists the [full advantages of the native API over MQTT](https://esphome.io/components/api.html#advantages-over-mqtt). The short version: lower overhead, encryption by default, and no broker to maintain.
+</Tip>
+
+## Enabling the native API
+
+Add the `api:` key to your ESPHome YAML configuration. No additional parameters are required for a basic setup — ESPHome generates an encryption key automatically when you adopt the device in Home Assistant.
+
+```yaml
+api:
+```
+
+If you are migrating from the `esp32-example.yaml` which uses MQTT, remove or comment out the `mqtt:` block and uncomment `api:`:
+
+```yaml
+# Remove or comment out:
+# mqtt:
+#   broker: !secret mqtt_host
+#   username: !secret mqtt_username
+#   password: !secret mqtt_password
+#   id: mqtt_client
+
+# Add this instead:
+api:
+```
+
+<Warning>
+  Do not run both `api:` and `mqtt:` at the same time unless you have a specific reason to do so. For Home Assistant, use `api:` only.
+</Warning>
+
+## Auto-discovery in Home Assistant
+
+Once the device is flashed and connected to your Wi-Fi network, Home Assistant detects it automatically via mDNS.
+
+<Steps>
+  <Step title="Flash the firmware">
+    Run `esphome run esp32-ble-example.yaml` (or your custom YAML) to compile and upload. The `api:` component must be present.
+  </Step>
+  <Step title="Accept the discovery notification">
+    In Home Assistant, go to **Settings → Devices & services**. A notification will appear for a new ESPHome device. Click **Configure** and enter the encryption key if prompted.
+  </Step>
+  <Step title="Assign to an area (optional)">
+    After adding the device, assign it to a room or area in Home Assistant for easier organisation.
+  </Step>
+</Steps>
+
+## Entity naming
+
+All entity names are derived from the ESPHome device name set in `substitutions.name`. With the default name `jk-bms`, entities appear in Home Assistant as:
+
+| ESPHome sensor key | Home Assistant entity ID |
+|--------------------|--------------------------|
+| `cell_voltage_1` | `sensor.jk_bms_cell_voltage_1` |
+| `total_voltage` | `sensor.jk_bms_total_voltage` |
+| `current` | `sensor.jk_bms_current` |
+| `capacity_remaining` | `sensor.jk_bms_capacity_remaining` |
+| `charging` (switch) | `switch.jk_bms_charging` |
+| `discharging` (switch) | `switch.jk_bms_discharging` |
+| `errors` (text) | `sensor.jk_bms_errors` |
+| `battery_type` (text) | `sensor.jk_bms_battery_type` |
+
+If you change `name` in `substitutions`, replace `jk_bms` in all entity IDs with the snake-case version of your chosen name.
+
+## Lovelace entities card
+
+The following Lovelace entities card shows the most useful BMS sensors on a single card. Paste it into the Home Assistant dashboard editor using the **Manual card** option.
+
+```yaml
+type: entities
+entities:
+  - entity: sensor.jk_bms_total_voltage
+    name: Total Voltage
+  - entity: sensor.jk_bms_current
+    name: Current
+  - entity: sensor.jk_bms_capacity_remaining
+    name: Capacity Remaining
+  - entity: sensor.jk_bms_power_tube_temperature
+    name: Power Tube Temperature
+  - entity: sensor.jk_bms_temperature_sensor_1
+    name: Temperature Sensor 1
+  - entity: sensor.jk_bms_temperature_sensor_2
+    name: Temperature Sensor 2
+  - entity: sensor.jk_bms_cell_voltage_1
+    name: Cell Voltage 1
+  - entity: sensor.jk_bms_cell_voltage_2
+    name: Cell Voltage 2
+  - entity: sensor.jk_bms_cell_voltage_3
+    name: Cell Voltage 3
+  - entity: sensor.jk_bms_cell_voltage_4
+    name: Cell Voltage 4
+  - entity: sensor.jk_bms_delta_cell_voltage
+    name: Delta Cell Voltage
+  - entity: sensor.jk_bms_charging_cycles
+    name: Charging Cycles
+  - entity: switch.jk_bms_charging
+    name: Charging
+  - entity: switch.jk_bms_discharging
+    name: Discharging
+  - entity: sensor.jk_bms_errors
+    name: Errors
+```
+
+<Note>
+  The full entities card with all sensors is available in the project repository as `lovelace-entities-card.yaml`. A community-contributed set of custom Lovelace UI cards with a more polished layout is also available in the [project discussions](https://github.com/syssi/esphome-jk-bms/discussions/230).
+</Note>
+
+## Next steps
+
+For setups that do not use Home Assistant or require publishing BMS data to a shared MQTT broker, see the [MQTT integration guide](/integration/mqtt).

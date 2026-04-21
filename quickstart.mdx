@@ -1,80 +1,351 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quickstart: Connect an ESP32 to JK-BMS with ESPHome"
+description: "Flash an ESP32 with the JK-BMS external component over UART-TTL or BLE and see live cell voltages and pack data in your terminal in minutes."
 ---
 
-## Get started in three steps
+This guide walks you through flashing an ESP32 with the ESPHome JK-BMS external component. You will end up with a device that reads live BMS data and publishes it over Wi-Fi. Two paths are covered: UART-TTL (wired, via the BMS GPS port) and BLE (wireless).
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+- ESPHome 2025.7.0 or higher installed
+- An ESP32 board (required for BLE; ESP8266 works for UART-TTL only)
+- Your Wi-Fi credentials
+- For UART-TTL: a 4-pin JST 1.25 mm cable and a USB-to-serial adapter or direct flashing setup
+- For BLE: the Bluetooth MAC address of your BMS (visible in the JikongBMS Android app)
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+## UART-TTL setup
 
-### Step 2: Deploy your changes
+<Steps>
+  <Step title="Install ESPHome">
+    Install ESPHome using pip if you have not already done so.
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash
+    pip3 install esphome
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Create a secrets file">
+    Create a `secrets.yaml` file in your working directory with your Wi-Fi and MQTT credentials. If you use the Home Assistant native API instead of MQTT, you only need the Wi-Fi secrets.
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```yaml
+    wifi_ssid: MY_WIFI_SSID
+    wifi_password: MY_WIFI_PASSWORD
 
-### Step 3: Go live
+    mqtt_host: MY_MQTT_HOST
+    mqtt_username: MY_MQTT_USERNAME
+    mqtt_password: MY_MQTT_PASSWORD
+    ```
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Create your UART configuration">
+    Create a file named `jk-bms-uart.yaml`. The `external_components` block pulls the component directly from GitHub at compile time.
+
+    ```yaml
+    substitutions:
+      name: jk-bms
+      device_description: "Monitor a JK-BMS using the GPS port (UART-TTL)"
+      external_components_source: github://syssi/esphome-jk-bms@main
+      tx_pin: GPIO16
+      rx_pin: GPIO17
+
+    esphome:
+      name: ${name}
+      friendly_name: ${name}
+      comment: ${device_description}
+
+    esp32:
+      board: wemos_d1_mini32
+      framework:
+        type: esp-idf
+
+    external_components:
+      - source: ${external_components_source}
+        refresh: 0s
+
+    wifi:
+      ssid: !secret wifi_ssid
+      password: !secret wifi_password
+
+    ota:
+      platform: esphome
+
+    logger:
+      level: DEBUG
+
+    # Remove mqtt and uncomment api: if you use Home Assistant
+    mqtt:
+      broker: !secret mqtt_host
+      username: !secret mqtt_username
+      password: !secret mqtt_password
+      id: mqtt_client
+
+    # api:
+
+    uart:
+      - id: uart_0
+        baud_rate: 115200
+        rx_buffer_size: 384
+        tx_pin: ${tx_pin}
+        rx_pin: ${rx_pin}
+
+    jk_modbus:
+      - id: modbus0
+        uart_id: uart_0
+        rx_timeout: 50ms
+
+    jk_bms:
+      - id: bms0
+        jk_modbus_id: modbus0
+        update_interval: 5s
+
+    sensor:
+      - platform: jk_bms
+        min_cell_voltage:
+          name: "min cell voltage"
+        max_cell_voltage:
+          name: "max cell voltage"
+        delta_cell_voltage:
+          name: "delta cell voltage"
+        total_voltage:
+          name: "total voltage"
+        current:
+          name: "current"
+        power:
+          name: "power"
+        capacity_remaining:
+          name: "capacity remaining"
+        power_tube_temperature:
+          name: "power tube temperature"
+        temperature_sensor_1:
+          name: "temperature sensor 1"
+        temperature_sensor_2:
+          name: "temperature sensor 2"
+
+    switch:
+      - platform: jk_bms
+        charging:
+          name: "charging"
+        discharging:
+          name: "discharging"
+
+    text_sensor:
+      - platform: jk_bms
+        errors:
+          name: "errors"
+        software_version:
+          name: "software version"
+    ```
+
+    <Tip>
+      Adjust `tx_pin` and `rx_pin` to match the GPIO pins you wired to the BMS GPS port. GPIO16 and GPIO17 are common choices on the Wemos D1 Mini32.
+    </Tip>
+  </Step>
+
+  <Step title="Wire the BMS to your ESP32">
+    The UART-TTL socket on the BMS is a 4-pin JST 1.25 mm connector labeled GND, RX, TX, and VBAT.
+
+    ```
+                    UART-TTL
+    ┌──────────┐                ┌─────────┐
+    │          │<----- RX ----->│         │
+    │  JK-BMS  │<----- TX ----->│ ESP32/  │
+    │          │<----- GND ---->│ ESP8266 │
+    │          │                │         │
+    └──────────┘                └─────────┘
+
+    BMS connector pin order:
+    ┌─── ─────── ────┐
+    │ O   O   O   O  │
+    │GND  RX  TX VBAT│
+    └────────────────┘
+      │   │   │
+      │   │   └─── GPIO17 (rx_pin on ESP)
+      │   └─────── GPIO16 (tx_pin on ESP)
+      └─────────── GND
+    ```
+
+    Connect BMS RX to the ESP TX pin, BMS TX to the ESP RX pin, and GND to GND. Do not connect VBAT to the ESP.
+  </Step>
+
+  <Step title="Flash and view logs">
+    Compile, flash, and open the serial monitor in one command.
+
+    ```bash
+    esphome run jk-bms-uart.yaml
+    ```
+
+    Once the device connects to Wi-Fi you will see sensor output similar to this in the log:
+
+    ```
+    [sensor:127]: 'jk-bms cell voltage 1': Sending state 4.12500 V with 3 decimals of accuracy
+    [sensor:127]: 'jk-bms cell voltage 2': Sending state 4.12500 V with 3 decimals of accuracy
+    [sensor:127]: 'jk-bms cell voltage 3': Sending state 4.12800 V with 3 decimals of accuracy
+    [sensor:127]: 'jk-bms total voltage': Sending state 53.64000 V with 2 decimals of accuracy
+    [sensor:127]: 'jk-bms current': Sending state -0.00000 A with 2 decimals of accuracy
+    [sensor:127]: 'jk-bms capacity remaining': Sending state 99.00000 % with 0 decimals of accuracy
+    [sensor:127]: 'jk-bms power tube temperature': Sending state 24.00000 °C with 0 decimals of accuracy
+    [sensor:127]: 'jk-bms temperature sensor 1': Sending state 22.00000 °C with 0 decimals of accuracy
+    [sensor:127]: 'jk-bms temperature sensor 2': Sending state 22.00000 °C with 0 decimals of accuracy
+    [switch:045]: 'jk-bms charging': Sending state OFF
+    [switch:045]: 'jk-bms discharging': Sending state OFF
+    ```
+  </Step>
+</Steps>
+
+## BLE setup
+
+<Steps>
+  <Step title="Find your BMS Bluetooth MAC address">
+    Open the JikongBMS Android app, connect to your BMS, and note the MAC address shown on the device info screen. It will look like `C8:47:8C:E1:E2:AA`.
+  </Step>
+
+  <Step title="Identify your protocol version">
+    Check your BMS hardware version label and choose the matching protocol:
+
+    | Protocol | Hardware version |
+    |---|---|
+    | `JK04` | Hardware version ≤ 3.0 (e.g. JK-B2A16S hw 3.0, sw 3.3.0) |
+    | `JK02_24S` | Hardware version ≥ 6.0 and < 11.0 |
+    | `JK02_32S` | Hardware version ≥ 11.0 (e.g. JK-B2A8S20P hw 11.XW, sw 11.26) |
+
+    See [Supported devices](/supported-devices) for a full list of confirmed hardware/software version combinations.
+  </Step>
+
+  <Step title="Create your BLE configuration">
+    Create a file named `jk-bms-ble.yaml`. Replace the `mac_address` and `protocol_version` substitutions with your values.
+
+    ```yaml
+    substitutions:
+      name: jk-bms
+      device_description: "Monitor and control a JK-BMS via bluetooth"
+      external_components_source: github://syssi/esphome-jk-bms@main
+      mac_address: C8:47:8C:E1:E2:AA
+      protocol_version: JK02_24S
+
+    esphome:
+      name: ${name}
+      friendly_name: ${name}
+      comment: ${device_description}
+
+    esp32:
+      board: wemos_d1_mini32
+      framework:
+        type: esp-idf
+
+    external_components:
+      - source: ${external_components_source}
+        refresh: 0s
+
+    wifi:
+      ssid: !secret wifi_ssid
+      password: !secret wifi_password
+
+    ota:
+      platform: esphome
+      on_begin:
+        then:
+          - switch.turn_off: ble_client_switch0
+          - logger.log: "BLE connection suspended for OTA update"
+
+    logger:
+      level: DEBUG
+      logs:
+        esp32_ble_tracker: INFO
+        esp32_ble_client: INFO
+
+    # Remove api: and uncomment mqtt: if you don't use Home Assistant
+    api:
+
+    esp32_ble_tracker:
+      scan_parameters:
+        active: false
+
+    ble_client:
+      - mac_address: ${mac_address}
+        id: client0
+
+    jk_bms_ble:
+      - ble_client_id: client0
+        protocol_version: ${protocol_version}
+        throttle: 5s
+        id: bms0
+
+    sensor:
+      - platform: jk_bms_ble
+        jk_bms_ble_id: bms0
+        min_cell_voltage:
+          name: "min cell voltage"
+        max_cell_voltage:
+          name: "max cell voltage"
+        delta_cell_voltage:
+          name: "delta cell voltage"
+        total_voltage:
+          name: "total voltage"
+        current:
+          name: "current"
+        power:
+          name: "power"
+        state_of_charge:
+          name: "state of charge"
+        capacity_remaining:
+          name: "capacity remaining"
+        power_tube_temperature:
+          name: "power tube temperature"
+        temperature_sensor_1:
+          name: "temperature sensor 1"
+        temperature_sensor_2:
+          name: "temperature sensor 2"
+
+    switch:
+      - platform: jk_bms_ble
+        charging:
+          name: "charging"
+        discharging:
+          name: "discharging"
+        balancer:
+          name: "balancer"
+
+      - platform: ble_client
+        ble_client_id: client0
+        name: "enable bluetooth connection"
+        id: ble_client_switch0
+
+    text_sensor:
+      - platform: jk_bms_ble
+        errors:
+          name: "errors"
+        software_version:
+          name: "software version"
+        hardware_version:
+          name: "hardware version"
+    ```
+  </Step>
+
+  <Step title="Flash and view logs">
+    ```bash
+    esphome run jk-bms-ble.yaml
+    ```
+
+    The device will scan for BLE advertisements, connect to your BMS, and start reporting sensor data. You should see cell voltages appearing in the log within a few seconds of connection.
+  </Step>
+</Steps>
+
+<Warning>
+  The BLE component requires an ESP32. It will not compile for ESP8266. If you are using an ESP8266, use the UART-TTL path instead.
+</Warning>
+
+## Using the external component without cloning
+
+Both examples above use `external_components` to pull the component source directly from GitHub at compile time. You do not need to clone the repository. Add this block to any ESPHome YAML to use the component:
+
+```yaml
+external_components:
+  - source: github://syssi/esphome-jk-bms@main
+    refresh: 0s
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+- Add more sensors from the [sensor reference](/reference/sensors) — cell voltages for all cells, resistance values, protection thresholds, and more
+- Set up [Home Assistant integration](/integration/home-assistant) using the native ESPHome API
+- Review [supported devices](/supported-devices) to confirm your `protocol_version` setting

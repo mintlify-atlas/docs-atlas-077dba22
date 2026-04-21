@@ -1,0 +1,112 @@
+---
+title: "Switch Entities: JK-BMS UART and BLE Control Reference"
+description: "All writable switch entities in jk_bms and jk_bms_ble: charging, discharging, balancer toggle, heating, and advanced JK02_32S-only configuration switches."
+---
+
+Switch entities let ESPHome write commands back to the BMS, toggling MOSFETs and configuration flags. Both the UART (`jk_bms`) and BLE (`jk_bms_ble`) components expose switches, but the BLE component covers a significantly wider set of options available on newer hardware revisions.
+
+<Warning>
+Disabling the `charging` or `discharging` switch cuts current flow through the respective MOSFET. Incorrect use can damage the battery, connected loads, or the charger. Confirm the system is in a safe state before toggling these switches remotely.
+</Warning>
+
+---
+
+## UART Switches (`jk_bms`)
+
+| Key | What it controls | Read/Write |
+|---|---|---|
+| `charging` | Charge MOSFET — enables or disables charging | Read/Write |
+| `discharging` | Discharge MOSFET — enables or disables load output | Read/Write |
+
+The UART switch for `balancer` is defined in the source code but is commented out because BMS hardware version 11 does not accept writes to register `0x9D` reliably. Do not expose it unless you have confirmed your hardware supports it.
+
+```yaml
+switch:
+  - platform: jk_bms
+    charging:
+      name: "Charging"
+    discharging:
+      name: "Discharging"
+```
+
+---
+
+## BLE Switches (`jk_bms_ble`)
+
+BLE switches write to hardware-specific holding registers. The correct register is selected automatically based on the `protocol_version` you specify in the `jk_bms_ble` hub configuration (`JK04`, `JK02_24S`, or `JK02_32S`).
+
+### Core operation switches
+
+| Key | What it controls | Read/Write |
+|---|---|---|
+| `charging` | Charge MOSFET — enables or disables charging | Read/Write |
+| `discharging` | Discharge MOSFET — enables or disables load output | Read/Write |
+| `balancer` | Cell balancing — enables or disables the active balancer | Read/Write |
+
+### Advanced configuration switches
+
+These switches are marked with `entity_category: config` and are intended for one-time setup rather than routine operation.
+
+| Key | What it controls | Read/Write |
+|---|---|---|
+| `heating` | Battery heating pad relay | Read/Write |
+| `emergency` | Emergency mode (JK02_32S only) | Read/Write |
+| `disable_temperature_sensors` | Ignore readings from NTC probes | Read/Write |
+| `display_always_on` | Keep front-panel display permanently lit | Read/Write |
+| `smart_sleep` | Enable smart sleep mode to reduce standby current | Read/Write |
+| `disable_pcl_module` | Disable the precharge/current limiting module | Read/Write |
+| `timed_stored_data` | Enable timed data logging to internal storage | Read/Write |
+| `charging_float_mode` | Enable float/trickle charge mode after bulk charge | Read/Write |
+
+<Info>
+Not all switches are available on every hardware revision. `emergency`, `heating`, `disable_temperature_sensors`, `display_always_on`, `smart_sleep`, `disable_pcl_module`, `timed_stored_data`, and `charging_float_mode` are supported on JK02_32S (hardware ≥ 11.0) only. Register addresses for JK04 for these features are `0x00` (unimplemented).
+</Info>
+
+```yaml
+switch:
+  - platform: jk_bms_ble
+    charging:
+      name: "Charging"
+    discharging:
+      name: "Discharging"
+    balancer:
+      name: "Balancer"
+    heating:
+      name: "Heating"
+    emergency:
+      name: "Emergency Mode"
+    disable_temperature_sensors:
+      name: "Disable Temp Sensors"
+    display_always_on:
+      name: "Display Always On"
+    smart_sleep:
+      name: "Smart Sleep"
+    disable_pcl_module:
+      name: "Disable PCL Module"
+    timed_stored_data:
+      name: "Timed Stored Data"
+    charging_float_mode:
+      name: "Charging Float Mode"
+```
+
+---
+
+## Protocol version and register mapping
+
+The BLE component maps each switch key to a different holding register depending on the `protocol_version` set in the hub:
+
+| Switch | JK04 | JK02_24S | JK02_32S |
+|---|---|---|---|
+| `charging` | — (`0x00`) | `0x1D` | `0x1D` |
+| `discharging` | — (`0x00`) | `0x1E` | `0x1E` |
+| `balancer` | `0x6C` | `0x1F` | `0x1F` |
+| `emergency` | — | — | `0x6B` |
+| `heating` | — | — | `0x27` |
+| `disable_temperature_sensors` | — | — | `0x28` |
+| `display_always_on` | — | — | `0x2B` |
+| `smart_sleep` | — | — | `0x2D` |
+| `disable_pcl_module` | — | — | `0x2E` |
+| `timed_stored_data` | — | — | `0x2F` |
+| `charging_float_mode` | — | — | `0x30` |
+
+Entries marked `—` have a register address of `0x00` and are not written for that protocol version.

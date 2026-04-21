@@ -1,0 +1,98 @@
+---
+title: "Text Sensor Entities: JK-BMS UART and BLE Reference"
+description: "All text sensor entities in jk_bms and jk_bms_ble: decoded errors, operation status, battery type, version strings, and formatted total runtime."
+---
+
+Text sensors return string values instead of numbers. The JK-BMS integration uses them to surface human-readable decoded strings — active fault descriptions, the BMS operation mode, battery chemistry, firmware versions, and a formatted uptime string. All text sensors are read-only.
+
+---
+
+## UART Text Sensors (`jk_bms`)
+
+| Key | Entity Category | Description |
+|---|---|---|
+| `errors` | diagnostic | Comma-separated list of active fault conditions decoded from the errors bitmask |
+| `operation_mode` | — | Human-readable current operation mode decoded from the operation mode bitmask |
+| `battery_type` | — | Battery chemistry reported by the BMS (e.g. `Lithium Iron Phosphate`) |
+| `password` | — | BMS configuration password stored in the device |
+| `device_type` | diagnostic | Device model identifier string reported by the BMS |
+| `software_version` | diagnostic | Firmware version string of the BMS |
+| `manufacturer` | diagnostic | Manufacturer name string stored in the BMS |
+| `total_runtime_formatted` | — | Total BMS runtime formatted as a human-readable string (e.g. `4d 3h 22m 10s`) |
+
+<Note>
+`errors` decodes the same bitmask exposed by the `errors_bitmask` numeric sensor into a plain-language string listing each active fault. Use this sensor for display in dashboards; use `errors_bitmask` for automations that need to test individual bits.
+</Note>
+
+```yaml
+text_sensor:
+  - platform: jk_bms
+    errors:
+      name: "Errors"
+    operation_mode:
+      name: "Operation Mode"
+    battery_type:
+      name: "Battery Type"
+    password:
+      name: "BMS Password"
+    device_type:
+      name: "Device Type"
+    software_version:
+      name: "Software Version"
+    manufacturer:
+      name: "Manufacturer"
+    total_runtime_formatted:
+      name: "Total Runtime"
+```
+
+---
+
+## BLE Text Sensors (`jk_bms_ble`)
+
+| Key | Entity Category | Description |
+|---|---|---|
+| `errors` | diagnostic | Comma-separated list of active fault conditions |
+| `operation_status` | — | Human-readable current operation status |
+| `total_runtime_formatted` | — | Total BMS runtime as a human-readable string |
+| `charge_status` | — | Current charge phase description (e.g. bulk, absorption, float) |
+| `software_version` | diagnostic | Firmware version string of the BMS |
+| `hardware_version` | diagnostic | Hardware revision string of the BMS |
+
+<Info>
+The BLE component exposes `operation_status` (not `operation_mode`), and adds `hardware_version` and `charge_status` which are not available over UART. It does not expose `battery_type`, `password`, `device_type`, or `manufacturer`.
+</Info>
+
+```yaml
+text_sensor:
+  - platform: jk_bms_ble
+    errors:
+      name: "Errors"
+    operation_status:
+      name: "Operation Status"
+    total_runtime_formatted:
+      name: "Total Runtime"
+    charge_status:
+      name: "Charge Status"
+    software_version:
+      name: "Software Version"
+    hardware_version:
+      name: "Hardware Version"
+```
+
+---
+
+## Availability by transport
+
+| Key | UART (`jk_bms`) | BLE (`jk_bms_ble`) |
+|---|---|---|
+| `errors` | Yes | Yes |
+| `operation_mode` | Yes | — |
+| `operation_status` | — | Yes |
+| `battery_type` | Yes | — |
+| `password` | Yes | — |
+| `device_type` | Yes | — |
+| `software_version` | Yes | Yes |
+| `manufacturer` | Yes | — |
+| `hardware_version` | — | Yes |
+| `total_runtime_formatted` | Yes | Yes |
+| `charge_status` | — | Yes |

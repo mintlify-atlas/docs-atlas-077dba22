@@ -1,0 +1,149 @@
+---
+title: "Debugging ESPHome JK-BMS UART and BLE Communication"
+description: "Enable UART debug output, increase log verbosity, resolve ESP32 stack overflows, and troubleshoot BLE connectivity for the JK-BMS ESPHome component."
+---
+
+When the component does not produce sensor readings, the first step is to capture the raw serial traffic between the ESP32 and the BMS. ESPHome's built-in UART debug feature logs every byte sent and received, making it straightforward to confirm whether the ESP is transmitting requests and whether the BMS is responding. This page covers UART debug output, log levels, ESP32 stack overflow fixes, and BLE connection troubleshooting.
+
+## Enabling UART debug output
+
+Add `debug:` to your UART configuration and set the logger level to `DEBUG`. This causes ESPHome to print all outgoing and incoming bytes in hex to the serial console.
+
+```yaml
+logger:
+  level: DEBUG
+
+uart:
+  - id: uart_0
+    baud_rate: 115200
+    rx_buffer_size: 384
+    tx_pin: ${tx_pin}
+    rx_pin: ${rx_pin}
+    debug:
+      direction: BOTH
+```
+
+`direction: BOTH` captures both the request frames sent by the ESP32 and the response frames received from the BMS. Set `direction: RX` or `direction: TX` to narrow the output if needed.
+
+<Warning>
+  Debug output generates a large volume of log messages. Disable it again once you have captured what you need — leaving it enabled can slow down the firmware and fill the log buffer.
+</Warning>
+
+## Reading the debug output
+
+After flashing with debug enabled, open the log stream:
+
+```bash
+esphome logs esp32-example.yaml
+```
+
+A healthy exchange looks like this — an outgoing request frame followed by a response:
+
+```
+[uart_debug:015]: >>> 4E 57 00 13 00 00 00 00 06 03 00 00 00 00 00 00 68 00 00 01 29
+[uart_debug:015]: <<< 4E 57 01 1B 00 00 00 00 06 00 01 ...
+```
+
+If you see outgoing `>>>` lines but no `<<<` response, the BMS is not replying. Check your wiring — TX on the ESP connects to RX on the BMS and vice versa. If you see neither direction, verify the `tx_pin` and `rx_pin` substitutions match the physical pins you connected.
+
+<Tip>
+  The JK-BMS UART socket is labelled `RS485` on some hardware revisions, but the connector uses TTL logic levels (3.3 V). No RS-485 adapter is needed — connect directly to the ESP32 UART pins.
+</Tip>
+
+## Increasing the log level further
+
+If `DEBUG` is not sufficient, `VERBOSE` and `VERY_VERBOSE` levels are available. These levels log internal ESPHome framework activity in addition to component output.
+
+```yaml
+logger:
+  level: VERY_VERBOSE
+  logs:
+    # Suppress high-frequency BLE tracker noise when using BLE
+    esp32_ble_tracker: INFO
+    esp32_ble_client: INFO
+```
+
+<Note>
+  `VERY_VERBOSE` can produce so many messages that important lines scroll past quickly. Pipe the output to a file for review: `esphome logs esp32-ble-example.yaml 2>&1 | tee bms-debug.log`
+</Note>
+
+## ESP32 stack overflow fix
+
+Enabling all sensors in the configuration can trigger a stack overflow on ESP32, causing a reboot loop. This is a known issue ([#63](https://github.com/syssi/esphome-jk-bms/issues/63)) and is resolved by increasing the main task stack size.
+
+Add the following to the `esphome:` section of your YAML:
+
+```yaml
+esphome:
+  name: ${name}
+  platformio_options:
+    board_build.partitions: default_8MB.csv
+    build_flags:
+      - -DCONFIG_ARDUINO_LOOP_STACK_SIZE=32768
+```
+
+Alternatively, if you are using the `esp-idf` framework (recommended for BLE), use:
+
+```yaml
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP_MAIN_TASK_STACK_SIZE: "32768"
+```
+
+A stack size of 32768 bytes (32 KB) is sufficient for configurations with all sensors enabled.
+
+## BLE connection troubleshooting
+
+### Finding the MAC address
+
+The BLE example configuration requires the MAC address of the BMS. To discover it, temporarily set up an `esp32_ble_tracker` without specifying a `ble_client` and watch the log output for an advertisement from a device named `JK_B...` or similar.
+
+```yaml
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: DEBUG
+```
+
+Flash this minimal configuration and run `esphome logs`. Look for lines like:
+
+```
+[esp32_ble_tracker:463]: Found device C8:47:8C:E1:E2:AA RSSI=-62
+[esp32_ble_tracker:479]:   Name: 'JK_B2A8S20P'
+```
+
+Copy that MAC address into your configuration's `mac_address` substitution.
+
+### Scanner configuration
+
+For BLE configurations, use passive scanning to reduce interference with the BMS connection:
+
+```yaml
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+```
+
+Active scanning sends additional probe requests that can interrupt the BLE connection on some BMS firmware versions.
+
+### Connection drops during OTA
+
+The BLE client must be disconnected before an OTA update begins, or the update will fail. The `esp32-ble-example.yaml` handles this with an `on_begin` hook:
+
+```yaml
+ota:
+  platform: esphome
+  on_begin:
+    then:
+      - switch.turn_off: ble_client_switch0
+      - logger.log: "BLE connection suspended for OTA update"
+```
+
+Ensure your configuration includes this block and that the `ble_client_switch0` ID matches the `id:` on your `ble_client` switch.

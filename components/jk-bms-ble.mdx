@@ -1,0 +1,445 @@
+---
+title: "JK-BMS Bluetooth Component for ESPHome (jk_bms_ble)"
+description: "Monitor and control JK-BMS over Bluetooth Low Energy on ESP32 with ESPHome. Supports three protocol versions, writable numbers, and BLE switches."
+---
+
+The `jk_bms_ble` component connects to JK-BMS battery management systems over **Bluetooth Low Energy** and is available exclusively on **ESP32**. It extends `ble_client` and exposes the full range of BMS data as ESPHome entities: cell voltages, resistances, temperatures, protection thresholds, and writable configuration numbers, plus buttons to trigger on-demand BMS queries.
+
+Unlike the UART-based `jk_bms` component, `jk_bms_ble` does not require an RS-485 adapter — the ESP32 connects directly to the BMS via Bluetooth. Because `MULTI_CONF = True`, you can monitor multiple BMS units simultaneously with separate `ble_client` entries.
+
+<Note>
+  Requires ESPHome **2025.7.0** or newer and an **ESP32** target. The component auto-loads `binary_sensor`, `button`, `number`, `sensor`, `switch`, and `text_sensor`.
+</Note>
+
+## Protocol Versions
+
+JK-BMS hardware has shipped with three distinct Bluetooth protocols. You must set `protocol_version` to the value matching your hardware:
+
+<CardGroup cols={3}>
+  <Card title="JK04" icon="microchip">
+    Hardware version **≤ 3.0** (e.g. JK-B2A16S hw 3.0, sw 3.3.0). Limited switch and number support.
+  </Card>
+  <Card title="JK02_24S" icon="microchip">
+    Hardware version **≥ 6.0 and < 11.0** (most common older BMS). Full feature support up to 24 cells.
+  </Card>
+  <Card title="JK02_32S" icon="microchip">
+    Hardware version **≥ 11.0** (e.g. JK-B2A8S20P hw 11.XW, sw 11.26). Supports up to 32 cells, additional switches, and extra number entities.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Check the label on your BMS or the firmware version reported by the BMS app to determine the correct protocol version. When in doubt, try `JK02_24S` first.
+</Tip>
+
+## Hardware Setup
+
+No wiring is required beyond powering the ESP32. The BMS must be in Bluetooth-discoverable mode (it always is when the pack is connected). Note the BMS MAC address from the sticker or the JK app.
+
+## Configuration
+
+<Steps>
+  <Step title="Enable the BLE tracker">
+    Add `esp32_ble_tracker` with passive scanning to avoid interfering with other BLE devices.
+  </Step>
+  <Step title="Declare a ble_client">
+    Reference the BMS MAC address.
+  </Step>
+  <Step title="Declare jk_bms_ble">
+    Set the required `protocol_version` and optional `throttle`.
+  </Step>
+  <Step title="Add entity platforms">
+    Each platform block references the `jk_bms_ble` hub by its ID.
+  </Step>
+</Steps>
+
+## Complete Example
+
+The following configuration is drawn from `esp32-ble-example.yaml` in the upstream repository.
+
+```yaml
+substitutions:
+  name: jk-bms
+  device_description: "Monitor and control a JK-BMS via bluetooth"
+  external_components_source: github://syssi/esphome-jk-bms@main
+  mac_address: C8:47:8C:E1:E2:AA
+  # JK02_24S: hardware >= 6.0 and < 11.0
+  # JK02_32S: hardware >= 11.0 (e.g. JK-B2A8S20P hw 11.XW)
+  # JK04:     hardware <= 3.0
+  protocol_version: JK02_24S
+
+esphome:
+  name: ${name}
+  friendly_name: ${name}
+  comment: ${device_description}
+  project:
+    name: "syssi.esphome-jk-bms"
+    version: 2.4.0
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: ${external_components_source}
+    refresh: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  platform: esphome
+  on_begin:
+    then:
+      - switch.turn_off: ble_client_switch0
+      - logger.log: "BLE connection suspended for OTA update"
+
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: INFO
+    esp32_ble_client: INFO
+
+api:
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+ble_client:
+  - mac_address: ${mac_address}
+    id: client0
+
+jk_bms_ble:
+  - ble_client_id: client0
+    protocol_version: ${protocol_version}
+    throttle: 5s
+    id: bms0
+
+binary_sensor:
+  - platform: jk_bms_ble
+    balancing:
+      name: "balancing"
+    charging:
+      name: "charging"
+    discharging:
+      name: "discharging"
+    heating:
+      name: "heating"
+    online_status:
+      name: "online status"
+
+button:
+  - platform: jk_bms_ble
+    retrieve_settings:
+      name: "retrieve settings"
+    retrieve_device_info:
+      name: "retrieve device info"
+
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    balance_trigger_voltage:
+      name: "balance trigger voltage"
+    cell_count:
+      name: "cell count"
+    total_battery_capacity:
+      name: "total battery capacity"
+    cell_voltage_overvoltage_protection:
+      name: "cell voltage overvoltage protection"
+    cell_voltage_undervoltage_protection:
+      name: "cell voltage undervoltage protection"
+    max_charge_current:
+      name: "max charge current"
+    max_discharge_current:
+      name: "max discharge current"
+
+sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    min_cell_voltage:
+      name: "min cell voltage"
+    max_cell_voltage:
+      name: "max cell voltage"
+    delta_cell_voltage:
+      name: "delta cell voltage"
+    average_cell_voltage:
+      name: "average cell voltage"
+    cell_voltage_1:
+      name: "cell voltage 1"
+    # … cell_voltage_2 through cell_voltage_32
+    cell_resistance_1:
+      name: "cell resistance 1"
+    # … cell_resistance_2 through cell_resistance_32
+    total_voltage:
+      name: "total voltage"
+    current:
+      name: "current"
+    power:
+      name: "power"
+    charging_power:
+      name: "charging power"
+    discharging_power:
+      name: "discharging power"
+    temperature_sensor_1:
+      name: "temperature sensor 1"
+    temperature_sensor_2:
+      name: "temperature sensor 2"
+    power_tube_temperature:
+      name: "power tube temperature"
+    state_of_charge:
+      name: "state of charge"
+    capacity_remaining:
+      name: "capacity remaining"
+    charging_cycles:
+      name: "charging cycles"
+    balancing_current:
+      name: "balancing current"
+    errors_bitmask:
+      name: "errors bitmask"
+
+switch:
+  - platform: jk_bms_ble
+    charging:
+      name: "charging"
+    discharging:
+      name: "discharging"
+    balancer:
+      name: "balancer"
+
+  - platform: ble_client
+    ble_client_id: client0
+    name: "enable bluetooth connection"
+    id: ble_client_switch0
+
+text_sensor:
+  - platform: jk_bms_ble
+    errors:
+      name: "errors"
+    total_runtime_formatted:
+      name: "total runtime formatted"
+    software_version:
+      name: "software version"
+    hardware_version:
+      name: "hardware version"
+```
+
+## Component Configuration
+
+<ParamField path="ble_client_id" type="string" required>
+  ID of the `ble_client` entry that manages the BLE connection to the BMS.
+</ParamField>
+
+<ParamField path="protocol_version" type="enum" required>
+  Protocol variant to use. One of `JK04`, `JK02_24S`, or `JK02_32S`. See the [Protocol Versions](#protocol-versions) section above.
+</ParamField>
+
+<ParamField path="throttle" type="time" default="2s">
+  Minimum time between consecutive entity updates. Prevents flooding the BLE link. Default is `2s`.
+</ParamField>
+
+<ParamField path="update_interval" type="time" default="5s">
+  How often the component polls the BMS for new data.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Optional ID used to reference this BMS from sensor/number platform blocks.
+</ParamField>
+
+## OTA Updates
+
+<Warning>
+  The BLE connection must be **turned off** before performing an OTA firmware update, otherwise the update will fail. The example configuration above includes an `ota.on_begin` automation that disables the `ble_client` switch. Always include this pattern when using `jk_bms_ble`.
+</Warning>
+
+```yaml
+ota:
+  platform: esphome
+  on_begin:
+    then:
+      - switch.turn_off: ble_client_switch0
+      - logger.log: "BLE connection suspended for OTA update"
+```
+
+## Supported Platforms
+
+### Sensor
+
+<AccordionGroup>
+  <Accordion title="Cell voltage sensors">
+
+`cell_voltage_1` through `cell_voltage_32` — unit: V, accuracy: 3 decimals.
+`cell_resistance_1` through `cell_resistance_32` — unit: Ω, accuracy: 3 decimals.
+
+| Key | Unit | Notes |
+|-----|------|-------|
+| `min_cell_voltage` | V | Lowest cell voltage |
+| `max_cell_voltage` | V | Highest cell voltage |
+| `min_voltage_cell` | — | Index of lowest-voltage cell |
+| `max_voltage_cell` | — | Index of highest-voltage cell |
+| `delta_cell_voltage` | V | Spread between min and max |
+| `average_cell_voltage` | V | Mean cell voltage |
+
+  </Accordion>
+  <Accordion title="Pack-level sensors">
+
+| Key | Unit | Notes |
+|-----|------|-------|
+| `total_voltage` | V | Pack voltage |
+| `current` | A | Pack current |
+| `power` | W | Total power |
+| `charging_power` | W | Charge power |
+| `discharging_power` | W | Discharge power |
+| `state_of_charge` | % | Battery SoC |
+| `state_of_health` | % | Battery SoH |
+| `capacity_remaining` | Ah | Remaining capacity |
+| `total_battery_capacity_setting` | Ah | Configured nominal capacity |
+| `charging_cycles` | — | Cumulative charge cycles |
+| `total_charging_cycle_capacity` | Ah | Total Ah processed |
+| `total_runtime` | s | Cumulative seconds running |
+| `balancing` | — | Balancing state as numeric |
+| `balancing_current` | A | Active balancing current |
+| `heating_current` | A | Heating element current |
+| `errors_bitmask` | — | Raw error flags (diagnostic) |
+| `emergency_time_countdown` | s | Emergency mode countdown |
+| `charge_status_id` | — | Charge status numeric ID |
+| `charge_status_time_elapsed` | s | Time elapsed in current charge status |
+
+  </Accordion>
+  <Accordion title="Temperature sensors">
+
+`temperature_sensor_1` through `temperature_sensor_5` — unit: °C, accuracy: 1 decimal.
+
+| Key | Unit |
+|-----|------|
+| `power_tube_temperature` | °C |
+
+  </Accordion>
+</AccordionGroup>
+
+### Binary Sensor
+
+| Key | Notes |
+|-----|-------|
+| `charging` | Charge MOSFET active |
+| `discharging` | Discharge MOSFET active |
+| `balancing` | Balancing active |
+| `heating` | Heating element active |
+| `dry_contact_1` | Dry contact input 1 state |
+| `dry_contact_2` | Dry contact input 2 state |
+| `online_status` | Connectivity status (diagnostic) |
+
+### Switch
+
+Protocol availability per column: JK04 / JK02_24S / JK02_32S.
+
+| Key | JK04 | JK02_24S | JK02_32S | Notes |
+|-----|------|----------|----------|-------|
+| `charging` | — | ✓ | ✓ | Charge MOSFET |
+| `discharging` | — | ✓ | ✓ | Discharge MOSFET |
+| `balancer` | ✓ | ✓ | ✓ | Cell balancer |
+| `emergency` | — | — | ✓ | Emergency mode |
+| `heating` | — | — | ✓ | Heating element |
+| `disable_temperature_sensors` | — | — | ✓ | Disable NTC sensors |
+| `display_always_on` | — | — | ✓ | BMS display backlight |
+| `smart_sleep` | — | — | ✓ | Smart sleep mode |
+| `disable_pcl_module` | — | — | ✓ | Disable PCL module |
+| `timed_stored_data` | — | — | ✓ | Timed data storage |
+| `charging_float_mode` | — | — | ✓ | Float charge mode |
+
+### Text Sensor
+
+| Key | Notes |
+|-----|-------|
+| `errors` | Decoded error string (diagnostic) |
+| `operation_status` | Human-readable operation status |
+| `total_runtime_formatted` | Runtime as `0d 0h 0m 0s` |
+| `charge_status` | Current charge phase description |
+| `software_version` | Firmware version (diagnostic) |
+| `hardware_version` | Hardware version (diagnostic) |
+
+### Button
+
+| Key | Command | Notes |
+|-----|---------|-------|
+| `retrieve_settings` | `0x96` | Request settings frame; also restarts the notification stream |
+| `retrieve_device_info` | `0x97` | Request device information frame |
+
+### Number
+
+All numbers are in the `config` entity category. Default step is `0.01` for voltage entities. Protocol availability follows the same JK04/JK02_24S/JK02_32S matrix as switches.
+
+<AccordionGroup>
+  <Accordion title="Voltage thresholds (V)">
+
+| Key | Min | Max | Step |
+|-----|-----|-----|------|
+| `smart_sleep_voltage` | 0.003 | 3.650 | 0.001 |
+| `cell_voltage_overvoltage_protection` | 1.2 | 4.350 | 0.001 |
+| `cell_voltage_overvoltage_recovery` | 1.2 | 4.350 | 0.001 |
+| `cell_voltage_undervoltage_protection` | 1.2 | 4.350 | 0.001 |
+| `cell_voltage_undervoltage_recovery` | 1.2 | 4.350 | 0.001 |
+| `balance_trigger_voltage` | 0.003 | 1.0 | 0.001 |
+| `cell_soc100_voltage` | 0.003 | 3.650 | 0.001 |
+| `cell_soc0_voltage` | 0.003 | 3.650 | 0.001 |
+| `cell_request_charge_voltage` | 0.003 | 3.650 | 0.001 |
+| `cell_request_float_voltage` | 0.003 | 3.650 | 0.001 |
+| `balance_starting_voltage` | 1.20 | 4.25 | 0.01 |
+| `power_off_voltage` | 1.20 | 4.35 | 0.01 |
+| `voltage_calibration` | 1.0 | 200.0 | 0.01 |
+
+  </Accordion>
+  <Accordion title="Current thresholds (A)">
+
+| Key | Min | Max | Step |
+|-----|-----|-----|------|
+| `max_charge_current` | 1.0 | 600.1 | 0.1 |
+| `max_discharge_current` | 1.0 | 1200.1 | 0.1 |
+| `max_balance_current` | 0.3 | 15.0 | 0.1 |
+| `current_calibration` | 0.0 | 1000.0 | 0.001 |
+
+  </Accordion>
+  <Accordion title="Timing (s / μs / h)">
+
+| Key | Unit | Min | Max |
+|-----|------|-----|-----|
+| `charge_overcurrent_protection_delay` | s | 2 | 600 |
+| `charge_overcurrent_protection_recovery_time` | s | 2 | 600 |
+| `discharge_overcurrent_protection_delay` | s | 2 | 600 |
+| `discharge_overcurrent_protection_recovery_time` | s | 2 | 600 |
+| `short_circuit_protection_delay` | μs | 0 | 1000000 |
+| `short_circuit_protection_recovery_time` | s | 2 | 600 |
+| `discharge_precharge_time` | s | 0 | 255 |
+| `cell_request_charge_voltage_time` | h | 0 | 18.2 |
+| `cell_request_float_voltage_time` | h | 0 | 18.2 |
+
+  </Accordion>
+  <Accordion title="Temperature thresholds (°C)">
+
+| Key | Min | Max |
+|-----|-----|-----|
+| `charge_overtemperature_protection` | 30 | 80 |
+| `charge_overtemperature_protection_recovery` | 30 | 80 |
+| `discharge_overtemperature_protection` | 30 | 80 |
+| `discharge_overtemperature_protection_recovery` | 30 | 80 |
+| `charge_undertemperature_protection` | -45 | 20 |
+| `charge_undertemperature_protection_recovery` | -45 | 20 |
+| `discharge_undertemperature_protection` | -40 | 100 |
+| `discharge_undertemperature_protection_recovery` | -40 | 100 |
+| `power_tube_overtemperature_protection` | 50 | 110 |
+| `power_tube_overtemperature_protection_recovery` | 50 | 110 |
+| `heating_start_temperature` | -40 | 100 |
+| `heating_stop_temperature` | -40 | 100 |
+
+  </Accordion>
+  <Accordion title="Pack configuration">
+
+| Key | Unit | Min | Max | Step |
+|-----|------|-----|-----|------|
+| `cell_count` | — | 2 | 32 | 1 |
+| `total_battery_capacity` | Ah | 2 | 20000 | 1 |
+| `re_bulk_soc` | % | 0 | 50 | 1 |
+
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,85 @@
+---
+title: "Known Issues and Limitations of ESPHome JK-BMS"
+description: "Documented bugs and limitations in ESPHome JK-BMS: battery type always reports wrong value, and ESP32 stack overflow when all sensors are enabled."
+---
+
+This page lists confirmed bugs and hardware limitations that affect the ESPHome JK-BMS component. Each entry includes the relevant GitHub issue number, a description of the observed behaviour, and the recommended workaround where one exists. The minimum supported ESPHome version for this component is **2025.7.0**.
+
+<AccordionGroup>
+  <Accordion title="Battery type sensor always reports 'Ternary Lithium' (issue #9)">
+    **Affected versions:** All  
+    **GitHub issue:** [#9](https://github.com/syssi/esphome-jk-bms/issues/9)
+
+    The `battery_type` text sensor always returns `Ternary Lithium` regardless of the battery chemistry actually configured in the BMS. This is a firmware limitation of the JK-BMS hardware itself — the BMS reports the same fixed value from the register regardless of which parameter set was loaded or which battery type was selected in the Android app.
+
+    **Impact:** The `jk-bms battery type` entity in Home Assistant (or the `jk-bms/text_sensor/battery_type/state` MQTT topic) cannot be relied upon to reflect the true battery chemistry of your pack.
+
+    **Workaround:** There is no software workaround. The value returned by the BMS is hardcoded in the BMS firmware. You can hide the entity in Home Assistant if the incorrect value causes confusion:
+
+    ```yaml
+    text_sensor:
+      - platform: jk_bms
+        battery_type:
+          name: "battery type"
+          entity_category: diagnostic
+          disabled_by_default: true
+    ```
+
+    <Note>
+      This is a BMS firmware issue, not an ESPHome component bug. The component faithfully decodes and reports whatever value the BMS transmits.
+    </Note>
+  </Accordion>
+
+  <Accordion title="ESP32 stack overflow when all sensors are enabled (issue #63)">
+    **Affected versions:** All ESP32 configurations with a large number of sensors enabled  
+    **GitHub issue:** [#63](https://github.com/syssi/esphome-jk-bms/issues/63)
+
+    Enabling all sensors provided by the `jk_bms` or `jk_bms_ble` platform can exhaust the default ESP32 main task stack, causing a stack overflow and a reboot loop. The device repeatedly crashes and restarts without producing any sensor readings.
+
+    **Symptoms:**
+    - Device boots, then resets after a few seconds
+    - Log output (if captured) shows a `Guru Meditation Error` or `Stack canary watchpoint triggered`
+    - Reducing the number of enabled sensors stops the crash
+
+    **Fix:** Increase the main task stack size in your ESPHome YAML. For `esp-idf` framework (recommended for BLE):
+
+    ```yaml
+    esp32:
+      board: wemos_d1_mini32
+      framework:
+        type: esp-idf
+        sdkconfig_options:
+          CONFIG_ESP_MAIN_TASK_STACK_SIZE: "32768"
+    ```
+
+    For the Arduino framework:
+
+    ```yaml
+    esphome:
+      name: ${name}
+      platformio_options:
+        build_flags:
+          - -DCONFIG_ARDUINO_LOOP_STACK_SIZE=32768
+    ```
+
+    A stack size of 32768 bytes (32 KB) is sufficient for full sensor configurations. If you continue to see crashes, try 65536 bytes.
+
+    <Tip>
+      If you do not need every sensor, a simpler fix is to remove the high-frequency or rarely-used sensors from your configuration. Protection threshold sensors (overvoltage delay, undervoltage recovery, etc.) are good candidates to remove if you only need operational telemetry.
+    </Tip>
+  </Accordion>
+</AccordionGroup>
+
+## Minimum ESPHome version
+
+This component requires **ESPHome 2025.7.0 or higher**. Using an older version will result in compilation errors or missing platform support. Update ESPHome before reporting bugs:
+
+```bash
+pip3 install --upgrade esphome
+```
+
+Verify your installed version:
+
+```bash
+esphome version
+```

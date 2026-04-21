@@ -1,0 +1,260 @@
+---
+title: "Sensor Entities: JK-BMS UART and BLE Reference"
+description: "All sensor entities in jk_bms and jk_bms_ble: cell voltages, temperatures, pack measurements, and protection thresholds with units and device classes."
+---
+
+The ESPHome JK-BMS integration exposes a large set of numeric sensor entities covering individual cell voltages, pack-level measurements, temperatures, diagnostic bitmasks, and protection thresholds read from the BMS. Sensors are read-only and update on each poll cycle. The `jk_bms` component communicates over UART; the `jk_bms_ble` component communicates over Bluetooth Low Energy. Most sensor keys are available on both transports, but a few — such as per-cell resistance and extra temperature channels — are BLE-only.
+
+<Info>
+All sensors are optional. Add only the keys you need to your configuration. Unused sensors consume no memory at runtime.
+</Info>
+
+---
+
+## Cell Measurements
+
+Individual per-cell voltages and the derived summary statistics computed across all cells.
+
+### Per-cell voltage
+
+The `cell_voltage_1` … `cell_voltage_N` keys expose the voltage of each cell in the pack. UART supports up to 24 cells; BLE supports up to 32 cells.
+
+| Key | Unit | Device Class | State Class | Available On |
+|---|---|---|---|---|
+| `cell_voltage_1` – `cell_voltage_24` | V | `voltage` | `measurement` | UART |
+| `cell_voltage_1` – `cell_voltage_32` | V | `voltage` | `measurement` | BLE |
+| `cell_resistance_1` – `cell_resistance_32` | Ω | — | `measurement` | BLE only |
+
+### Cell summary statistics
+
+| Key | Unit | Device Class | State Class | Available On |
+|---|---|---|---|---|
+| `min_cell_voltage` | V | `voltage` | `measurement` | UART + BLE |
+| `max_cell_voltage` | V | `voltage` | `measurement` | UART + BLE |
+| `min_voltage_cell` | — | — | `measurement` | UART + BLE |
+| `max_voltage_cell` | — | — | `measurement` | UART + BLE |
+| `delta_cell_voltage` | V | `voltage` | `measurement` | UART + BLE |
+| `average_cell_voltage` | V | `voltage` | `measurement` | UART + BLE |
+
+`min_voltage_cell` and `max_voltage_cell` report the **cell number** (integer index) of the weakest and strongest cell, not a voltage value.
+
+```yaml
+sensor:
+  - platform: jk_bms           # or jk_bms_ble
+    cell_voltage_1:
+      name: "Cell 1 Voltage"
+    cell_voltage_2:
+      name: "Cell 2 Voltage"
+    min_cell_voltage:
+      name: "Min Cell Voltage"
+    max_cell_voltage:
+      name: "Max Cell Voltage"
+    min_voltage_cell:
+      name: "Weakest Cell Number"
+    max_voltage_cell:
+      name: "Strongest Cell Number"
+    delta_cell_voltage:
+      name: "Cell Voltage Delta"
+    average_cell_voltage:
+      name: "Average Cell Voltage"
+```
+
+---
+
+## Pack Measurements
+
+Aggregate values for the whole battery pack: voltage, current, power, and capacity.
+
+| Key | Unit | Device Class | State Class | Available On |
+|---|---|---|---|---|
+| `total_voltage` | V | `voltage` | `measurement` | UART + BLE |
+| `current` | A | `current` | `measurement` | UART + BLE |
+| `power` | W | `power` | `measurement` | UART + BLE |
+| `charging_power` | W | `power` | `measurement` | UART + BLE |
+| `discharging_power` | W | `power` | `measurement` | UART + BLE |
+| `capacity_remaining` | % (UART) / Ah (BLE) | `battery` (UART) / — (BLE) | `measurement` | UART + BLE |
+| `capacity_remaining_derived` | Ah | — | `measurement` | UART only |
+| `state_of_charge` | % | `battery` | `measurement` | BLE only |
+| `state_of_health` | % | — | `measurement` | BLE only |
+| `total_battery_capacity_setting` | Ah | — | `measurement` | UART + BLE |
+| `actual_battery_capacity` | Ah | — | `measurement` | UART only |
+| `battery_strings` | — | — | `measurement` | UART only |
+| `charging_cycles` | — | — | `total_increasing` | UART + BLE |
+| `total_charging_cycle_capacity` | Ah | — | `total_increasing` | UART + BLE |
+| `total_runtime` | h (UART) / s (BLE) | — | `total_increasing` | UART + BLE |
+| `balancing` | — | — | `measurement` | BLE only |
+| `balancing_current` | A | `current` | `measurement` | BLE only |
+| `heating_current` | A | `current` | `measurement` | BLE only |
+| `emergency_time_countdown` | s | — | — | BLE only |
+| `charge_status_id` | — | — | — | BLE only |
+| `charge_status_time_elapsed` | s | — | — | BLE only |
+| `errors_bitmask` | — | — | — (diagnostic) | UART + BLE |
+| `operation_mode_bitmask` | — | — | — (diagnostic) | UART only |
+
+<Note>
+`current` is signed: positive values indicate charging, negative values indicate discharging. `charging_power` and `discharging_power` are always non-negative and reflect only the active direction.
+</Note>
+
+```yaml
+sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    total_voltage:
+      name: "Pack Voltage"
+    current:
+      name: "Pack Current"
+    power:
+      name: "Pack Power"
+    charging_power:
+      name: "Charging Power"
+    discharging_power:
+      name: "Discharging Power"
+    state_of_charge:
+      name: "State of Charge"
+    capacity_remaining:
+      name: "Capacity Remaining"
+    charging_cycles:
+      name: "Charge Cycles"
+    total_charging_cycle_capacity:
+      name: "Total Cycle Capacity"
+    total_runtime:
+      name: "Total Runtime"
+    balancing_current:
+      name: "Balancing Current"
+    errors_bitmask:
+      name: "Errors Bitmask"
+```
+
+---
+
+## Temperature
+
+Temperature sensors include the internal MOSFET/power-tube sensor and external NTC probes.
+
+| Key | Unit | Device Class | State Class | Available On |
+|---|---|---|---|---|
+| `power_tube_temperature` | °C | `temperature` | `measurement` | UART + BLE |
+| `temperature_sensor_1` | °C | `temperature` | `measurement` | UART + BLE |
+| `temperature_sensor_2` | °C | `temperature` | `measurement` | UART + BLE |
+| `temperature_sensor_3` | °C | `temperature` | `measurement` | BLE only |
+| `temperature_sensor_4` | °C | `temperature` | `measurement` | BLE only |
+| `temperature_sensor_5` | °C | `temperature` | `measurement` | BLE only |
+| `temperature_sensors` | — | — | `measurement` | UART only |
+
+`temperature_sensors` (UART) reports the **count** of temperature sensors detected by the BMS, not a temperature reading.
+
+<Tip>
+BLE supports up to five external temperature sensors (`temperature_sensor_1` through `temperature_sensor_5`). UART exposes only two. Enable the sensors that are physically connected to your BMS.
+</Tip>
+
+```yaml
+sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    power_tube_temperature:
+      name: "Power Tube Temperature"
+    temperature_sensor_1:
+      name: "Battery Temperature 1"
+    temperature_sensor_2:
+      name: "Battery Temperature 2"
+```
+
+---
+
+## Protection Thresholds
+
+The BMS stores its active protection thresholds in registers that are read back as sensor values. These are the **currently configured** limits, not live measurements.
+
+### Voltage protection thresholds (UART only)
+
+| Key | Unit | Device Class | State Class |
+|---|---|---|---|
+| `total_voltage_overvoltage_protection` | V | `voltage` | `measurement` |
+| `total_voltage_undervoltage_protection` | V | `voltage` | `measurement` |
+| `cell_voltage_overvoltage_protection` | V | `voltage` | `measurement` |
+| `cell_voltage_overvoltage_recovery` | V | `voltage` | `measurement` |
+| `cell_voltage_overvoltage_delay` | s | — | `measurement` |
+| `cell_voltage_undervoltage_protection` | V | `voltage` | `measurement` |
+| `cell_voltage_undervoltage_recovery` | V | `voltage` | `measurement` |
+| `cell_voltage_undervoltage_delay` | s | — | `measurement` |
+| `cell_pressure_difference_protection` | V | `voltage` | `measurement` |
+
+### Current protection thresholds (UART only)
+
+| Key | Unit | Device Class | State Class |
+|---|---|---|---|
+| `charging_overcurrent_protection` | A | `current` | `measurement` |
+| `charging_overcurrent_delay` | s | — | `measurement` |
+| `discharging_overcurrent_protection` | A | `current` | `measurement` |
+| `discharging_overcurrent_delay` | s | — | `measurement` |
+
+### Temperature protection thresholds (UART only)
+
+| Key | Unit | Device Class | State Class |
+|---|---|---|---|
+| `power_tube_temperature_protection` | °C | `temperature` | `measurement` |
+| `power_tube_temperature_recovery` | °C | `temperature` | `measurement` |
+| `temperature_sensor_temperature_protection` | °C | `temperature` | `measurement` |
+| `temperature_sensor_temperature_recovery` | °C | `temperature` | `measurement` |
+| `temperature_sensor_temperature_difference_protection` | °C | `temperature` | `measurement` |
+| `charging_high_temperature_protection` | °C | `temperature` | `measurement` |
+| `discharging_high_temperature_protection` | °C | `temperature` | `measurement` |
+| `charging_low_temperature_protection` | °C | `temperature` | `measurement` |
+| `charging_low_temperature_recovery` | °C | `temperature` | `measurement` |
+| `discharging_low_temperature_protection` | °C | `temperature` | `measurement` |
+| `discharging_low_temperature_recovery` | °C | `temperature` | `measurement` |
+
+<Warning>
+These sensors are read-only mirrors of the BMS configuration registers. To change protection thresholds over BLE, use the [number entities](/reference/numbers) provided by `jk_bms_ble`.
+</Warning>
+
+```yaml
+sensor:
+  - platform: jk_bms
+    cell_voltage_overvoltage_protection:
+      name: "Cell OVP"
+    cell_voltage_undervoltage_protection:
+      name: "Cell UVP"
+    charging_overcurrent_protection:
+      name: "Charge OCP"
+    discharging_overcurrent_protection:
+      name: "Discharge OCP"
+    power_tube_temperature_protection:
+      name: "MOS OTP"
+```
+
+---
+
+## Configuration and Calibration
+
+These sensors report stored configuration values and calibration offsets from the BMS.
+
+| Key | Unit | Device Class | State Class | Available On |
+|---|---|---|---|---|
+| `balance_starting_voltage` | V | `voltage` | `measurement` | UART only |
+| `balance_opening_pressure_difference` | V | `voltage` | `measurement` | UART only |
+| `total_battery_capacity_setting` | Ah | — | `measurement` | UART + BLE |
+| `current_calibration` | A | `current` | `measurement` | UART only |
+| `device_address` | — | — | `measurement` | UART only |
+| `sleep_wait_time` | s | — | `measurement` | UART only |
+| `alarm_low_volume` | % | — | `measurement` | UART only |
+| `manufacturing_date` | — | — | `measurement` | UART only |
+| `start_current_calibration` | — | — | `measurement` | UART only |
+| `protocol_version` | — | — | `measurement` | UART only |
+
+```yaml
+sensor:
+  - platform: jk_bms
+    balance_starting_voltage:
+      name: "Balance Start Voltage"
+    total_battery_capacity_setting:
+      name: "Configured Capacity"
+    current_calibration:
+      name: "Current Calibration Offset"
+    sleep_wait_time:
+      name: "Sleep Wait Time"
+    alarm_low_volume:
+      name: "Low SOC Alarm Threshold"
+    manufacturing_date:
+      name: "Manufacturing Date"
+```

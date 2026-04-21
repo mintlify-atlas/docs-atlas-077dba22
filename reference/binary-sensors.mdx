@@ -1,0 +1,111 @@
+---
+title: "Binary Sensor Entities: JK-BMS UART and BLE Reference"
+description: "All binary sensor entities in jk_bms and jk_bms_ble: charging, discharging, balancing, heating, dry contact inputs, and BMS connectivity status."
+---
+
+Binary sensors report boolean state — on or off — and require no unit of measurement. The JK-BMS integration uses them to expose the BMS operating states: whether the BMS is actively charging, discharging, balancing cells, heating the pack, and whether it is reachable on the bus. All binary sensors are read-only; to control charging, discharging, or balancing, use the corresponding [switch entities](/reference/switches).
+
+---
+
+## Available Binary Sensors
+
+<Tabs>
+  <Tab title="UART (jk_bms)">
+
+| Key | Device Class | Description |
+|---|---|---|
+| `balancing` | — | Active cell balancing is in progress |
+| `balancing_switch` | — | Balancer switch is enabled in BMS config |
+| `charging` | — | Charge MOSFET is conducting |
+| `discharging` | — | Discharge MOSFET is conducting |
+| `dedicated_charger_switch` | — | Dedicated charger input is enabled |
+| `online_status` | `connectivity` | BMS is responding on the UART bus |
+
+<Note>
+`balancing_switch` reflects whether balancing is **allowed** by the BMS configuration, not whether it is currently active. Use `balancing` to determine whether the BMS is actively equalising cells right now.
+</Note>
+
+<Note>
+`charging_switch` and `discharging_switch` keys also exist in the UART binary sensor schema but are deprecated. Use the `charging` and `discharging` switch entities instead.
+</Note>
+
+  </Tab>
+  <Tab title="BLE (jk_bms_ble)">
+
+| Key | Device Class | Description |
+|---|---|---|
+| `balancing` | — | Active cell balancing is in progress |
+| `charging` | — | Charge MOSFET is conducting |
+| `discharging` | — | Discharge MOSFET is conducting |
+| `heating` | — | Battery heating pad is active |
+| `dry_contact_1` | — | Dry contact input 1 state |
+| `dry_contact_2` | — | Dry contact input 2 state |
+| `online_status` | `connectivity` | BMS is reachable over Bluetooth |
+
+  </Tab>
+</Tabs>
+
+---
+
+## YAML Usage
+
+### UART example
+
+```yaml
+binary_sensor:
+  - platform: jk_bms
+    balancing:
+      name: "Balancing"
+    balancing_switch:
+      name: "Balancer Switch Enabled"
+    charging:
+      name: "Charging"
+    discharging:
+      name: "Discharging"
+    dedicated_charger_switch:
+      name: "Dedicated Charger Switch"
+    online_status:
+      name: "BMS Online"
+```
+
+### BLE example
+
+```yaml
+binary_sensor:
+  - platform: jk_bms_ble
+    balancing:
+      name: "Balancing"
+    charging:
+      name: "Charging"
+    discharging:
+      name: "Discharging"
+    heating:
+      name: "Heating Active"
+    dry_contact_1:
+      name: "Dry Contact 1"
+    dry_contact_2:
+      name: "Dry Contact 2"
+    online_status:
+      name: "BMS Online"
+```
+
+---
+
+## Using Binary Sensors in Automations
+
+Binary sensors integrate naturally with ESPHome automations and Home Assistant. A typical use case is alerting when the pack is neither charging nor discharging (idle state), or triggering a notification when the BMS goes offline.
+
+```yaml
+# Alert when BMS loses connectivity
+binary_sensor:
+  - platform: jk_bms_ble
+    online_status:
+      name: "BMS Online"
+      on_state:
+        then:
+          - if:
+              condition:
+                binary_sensor.is_off: online_status
+              then:
+                - logger.log: "BMS connection lost"
+```

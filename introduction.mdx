@@ -1,0 +1,62 @@
+---
+title: "ESPHome JK-BMS: Monitor Your Jikong Battery System"
+description: "An ESPHome external component that connects ESP32 or ESP8266 boards to Jikong BMS units via UART-TTL or BLE, exposing all sensors to Home Assistant."
+---
+
+ESPHome JK-BMS is an open-source external component for ESPHome that bridges Jikong Battery Management Systems to your smart home. Install it on an ESP32 or ESP8266, connect via UART-TTL or Bluetooth Low Energy, and surface dozens of live readings — cell voltages, temperatures, state of charge, protection thresholds, and more — directly into Home Assistant or any MQTT broker.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Flash your first ESP device and see live BMS data in minutes.
+  </Card>
+  <Card title="Supported devices" icon="list-check" href="/supported-devices">
+    Check whether your JK-BMS model and firmware version are supported.
+  </Card>
+  <Card title="UART-TTL connection" icon="plug" href="/connection/uart-ttl">
+    Wire the BMS GPS port to your ESP over serial for a reliable wired connection.
+  </Card>
+  <Card title="BLE connection" icon="bluetooth" href="/connection/ble">
+    Monitor and control your BMS wirelessly over Bluetooth Low Energy.
+  </Card>
+</CardGroup>
+
+## What the project does
+
+ESPHome JK-BMS decodes the proprietary JK-BMS serial protocol and exposes the full data surface as first-class ESPHome entities. Once configured, every reading the BMS exposes — per-cell voltages, pack-level measurements, protection settings, and operational state — becomes a sensor, switch, or text sensor you can use in automations, dashboards, and alerts.
+
+Key capabilities include:
+
+- Read **per-cell voltages and resistances** for up to 32 cells
+- Monitor **pack voltage, current, and power** in real time
+- Track **state of charge**, capacity remaining, charging cycles, and total runtime
+- Read **temperatures** from the power tube and up to four external sensors
+- Toggle **charging**, **discharging**, and **balancing** switches remotely
+- Read and write **protection thresholds** — overvoltage, undervoltage, overcurrent, and temperature limits
+- Monitor **NEEY/Heltec Smart Active Balancers** via a dedicated BLE component
+
+## Hardware requirements
+
+- **ESPHome 2025.7.0 or higher** — required by both the `jk_bms` and `jk_bms_ble` components
+- **ESP32 or ESP8266** — any generic board works; ESP32 is required for BLE
+
+For UART-TTL wiring, the BMS GPS port uses a 4-pin JST 1.25 mm connector (GND, RX, TX, VBAT). Connect RX and TX to any hardware UART pins on your ESP. A hardware UART is preferred over software serial at the required 115200 baud rate.
+
+<Note>
+  All JK-BMS models with software version 6.0 or higher are supported over UART-TTL. For BLE, you must select the correct `protocol_version` based on your hardware version. See [Supported devices](/supported-devices) for details.
+</Note>
+
+## Components in this project
+
+This repository provides seven ESPHome components:
+
+| Component | Protocol | Description |
+|---|---|---|
+| `jk_bms` | UART-TTL | Primary BMS monitor over the GPS serial port |
+| `jk_modbus` | UART-TTL | Low-level Modbus transport used by `jk_bms` |
+| `jk_bms_ble` | BLE | Wireless BMS monitor with writable number entities |
+| `heltec_balancer_ble` | BLE | Monitor for NEEY/Heltec Smart Active Balancers |
+| `jk_bms_display` | UART-TTL | Component for the JK-BMS display port |
+| `jk_balancer` | UART-TTL | Balancer component |
+| `jk_balancer_modbus` | UART-TTL | Low-level transport for the balancer component |
+
+To get started, see the [quickstart guide](/quickstart).

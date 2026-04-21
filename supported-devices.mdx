@@ -1,0 +1,100 @@
+---
+title: "Supported JK-BMS Models, Hardware, and Software Versions"
+description: "Complete list of confirmed-working JK-BMS models organized by protocol version, plus NEEY and Heltec Smart Active Balancers supported over BLE."
+---
+
+All JK-BMS models with software version 6.0 or higher use the implemented protocol and are expected to work. The tables below list every model that community members have confirmed working, together with the hardware version, software version, connection method, and required `protocol_version` setting.
+
+<Note>
+  ESPHome 2025.7.0 or higher is required. Software versions below 6.0 use a different protocol and are not supported.
+</Note>
+
+## How to identify your protocol version
+
+<Tip>
+  Check the hardware version label on your BMS board or in the JikongBMS Android app under device info. Use the following rules:
+
+  - **`JK04`** — hardware version ≤ 3.0 (e.g. JK-B2A16S hw 3.0, sw 3.3.0)
+  - **`JK02_24S`** — hardware version ≥ 6.0 and < 11.0
+  - **`JK02_32S`** — hardware version ≥ 11.0 (e.g. JK-B2A8S20P hw 11.XW, sw 11.26)
+
+  When in doubt, try `JK02_24S` first for older hardware and `JK02_32S` for newer hardware. The `protocol_version` setting is only required for the BLE component (`jk_bms_ble`). The UART-TTL component (`jk_bms`) detects the protocol automatically.
+</Tip>
+
+## JK02_32S protocol
+
+These devices use the newer 32-cell protocol, available on hardware version 11.x and above.
+
+| Model | Hardware version | Software version | Connection |
+|---|---|---|---|
+| JK-BD4A8S4P | hw 11.xw | sw 11.24 | BLE / UART-TTL |
+| JK-BD6A24S12P | hw 11.XW | sw 11.36 | BLE |
+| JK-BD6A24S12P | hw 11.XW | sw 11.42 | BLE |
+| JK-BD4A17S4P | hw 11.xw | sw 11.27 | BLE / UART-TTL |
+| JK-B1A8S10P | hw 11.XW | sw 11.261 | BLE / UART-TTL |
+| JK-B1A16S15P | hw 11.5 | sw 11.261 | BLE / UART-TTL |
+| JK-B2A8S20P | hw 11.XW | sw 11.17 | BLE / UART-TTL |
+| JK-B2A8S20P | hw 11.XW | sw 11.26 | BLE / UART-TTL |
+| JK-B2A20S20P | hw 10.XW | sw 11.21h | BLE / UART-TTL |
+| JK-B2A20S20P | hw 11.XW | sw 11.24H | BLE / UART-TTL |
+| JK-B2A20S20P | hw 11.XW | sw 11.25H | BLE / UART-TTL |
+| JK-B2A20S20P | hw 11.XW | sw 11.284 | BLE / UART-TTL |
+| JK-B2A20S20P | hw 11.XA | sw 11.48 | BLE |
+| JK-B2A20S20P | hw 11.U | sw 11.54 | BLE |
+
+## JK02_24S protocol
+
+These devices use the 24-cell protocol, available on hardware versions 6.x through 10.x.
+
+| Model | Hardware version | Software version | Connection |
+|---|---|---|---|
+| JK-BD6A17S6P | hw 7.2 | sw 7.1.0H | UART-TTL |
+| JK-BD6A17S8P | hw 9.x | sw 9.01G | UART-TTL |
+| JK-BD6A20S10P | hw 10.XW | sw 10.07 | UART-TTL |
+| JK-BD6A20S12P | hw 11.XW | sw 11.281 | UART-TTL |
+| JK-BD6A20S6P | hw 11.XW | sw 11.42 | UART-TTL |
+| JK-BD6A24S6P | hw 6.x | sw 6.10S | UART-TTL |
+| JK-BD6A24S10P | hw 8.x | sw 8.0.6G | UART-TTL |
+| JK-BD6A24S10P | hw 10.xw | sw 10.09 | UART-TTL |
+| JK-BD4A17S4P | hw 11.xw | sw 11.01 | UART-TTL |
+| JK-B1A24S15P | hw 8.x | sw 8.1.0H | UART-TTL |
+| JK-B1A20S15P | hw 8.x | sw 8.14U | UART-TTL |
+| JK-B1A20S15P | hw 10.xw | sw 10.07 | UART-TTL |
+| JK-B1A20S15P | hw 10.xw | sw 10.10 | UART-TTL |
+| JK-B1A20S15P | hw 11.xw | sw 11.26 | UART-TTL |
+| JK-B2A24S15P | hw 6.x | sw 6.1.3S | UART-TTL |
+| JK-B2A24S15P | hw 8.x | sw 8.21W | UART-TTL |
+| JK-B2A24S15P | hw 10.xw | sw 10.07 | BLE / UART-TTL |
+| JK-B2A24S15P | hw 10.xw | sw 10.08 | UART-TTL |
+| JK-B2A24S15P | hw 10.xw | sw 10.10 | UART-TTL |
+| JK-B2A24S20P | hw 8.x | sw 8.1.2H | BLE / UART-TTL |
+| JK-B2A24S20P | hw 8.x | sw 8.20G | BLE / UART-TTL |
+| JK-B2A24S20P | hw 10.X-W | sw 10.02 | BLE / UART-TTL |
+| JK-B2A24S20P | hw 10.XG | sw 10.07D30 | BLE / UART-TTL |
+| JK-B2A24S20P | hw 10.XW | sw 10.07 | BLE / UART-TTL |
+| JK-B2A24S20P | hw 10.XW | sw 10.09 | BLE / UART-TTL |
+| JK-B2A8S20P | hw 9.x | sw 9.01M3 | BLE / UART-TTL |
+| JK-B2A8S20P | hw 9.x | sw 9.08W | UART-TTL |
+| JK-B2A8S20P | hw 11.XA | sw 11.48 | UART-TTL |
+| JK-B2A20S20P | hw 10.XW | sw 10.09 | UART-TTL |
+| JK-B2A20S20P | hw 10.XW | sw 10.10 | UART-TTL |
+
+## JK04 protocol
+
+These older devices use the JK04 protocol. Only a small number of models are confirmed.
+
+| Model | Hardware version | Software version | Connection |
+|---|---|---|---|
+| JK-B5A24S | hw 8.x | sw 8.0.3M | UART-TTL |
+| JK-B2A16S | hw 3.0 | sw 3.3.0 | UART-TTL |
+
+## NEEY and Heltec Smart Active Balancers
+
+The `heltec_balancer_ble` component supports NEEY and Heltec-branded smart active balancers over BLE. These are separate devices from the BMS and use a different protocol.
+
+| Model | Hardware version | Software version |
+|---|---|---|
+| GW-24S4EB (NEEY 4A Smart Active Balancer) | HW-2.8.0 | ZH-1.2.3 |
+| GW-24S4EB (NEEY 4A Smart Active Balancer 4th gen) | HW-3.2.0 | ZH-1.2.4 |
+| EK-24S15EB (NEEY 15A Smart Active Balancer) | — | — |
+| EK-24S10EB (NEEY 10A Smart Active Balancer) | HW-1.1.5 | SW-1.1.1 |

@@ -1,24 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "ESPHome JK-BMS",
+  "projectType": "framework",
+  "projectName": "ESPHome JK-BMS",
+  "projectDescription": "An ESPHome external component that enables ESP32/ESP8266 devices to monitor and control Jikong Battery Management Systems (JK-BMS) via UART-TTL or Bluetooth Low Energy.",
   "theme": "aspen",
-  "colors": {
-    "primary": "#94cb04",
-    "light": "#545454",
-    "dark": "#94cb04"
-  },
-  "favicon": "https://media.brand.dev/288cc7c4-5cef-4376-950b-bdf0083eedae.png",
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/syssi/esphome-jk-bms"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/syssi/esphome-jk-bms"
-    }
-  },
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
   "navigation": {
     "tabs": [
       {
@@ -88,5 +75,24 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Monitor JK-BMS cell voltages, temperatures, and pack-level stats via UART-TTL or BLE",
+    "Control charging, discharging, and balancing switches remotely",
+    "Support for three BLE protocol versions: JK02_24S, JK02_32S, and JK04",
+    "Read and write BMS protection settings and calibration values over BLE",
+    "Support for NEEY/Heltec 4A Smart Active Balancer via BLE",
+    "Display port (RS485) passive monitoring support",
+    "Native ESPHome integration with Home Assistant and MQTT",
+    "Multi-device support for monitoring multiple BMS units simultaneously"
+  ],
+  "publicApiSurface": [
+    "jk_bms (UART component): sensor, binary_sensor, switch, text_sensor platforms",
+    "jk_bms_ble (BLE component): sensor, binary_sensor, switch, text_sensor, button, number platforms",
+    "jk_bms_ble.protocol_version: JK02_24S | JK02_32S | JK04",
+    "heltec_balancer_ble (BLE component): sensor, binary_sensor, switch, text_sensor, button, number, select platforms",
+    "jk_bms_display (Display port component): sensor, binary_sensor platforms",
+    "jk_modbus (UART bus component): rx_timeout configuration",
+    "jk_balancer_modbus (Modbus bus component for JK-PB series)"
+  ]
 }

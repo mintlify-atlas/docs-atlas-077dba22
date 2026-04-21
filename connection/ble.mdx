@@ -1,0 +1,446 @@
+---
+title: 'Monitor a JK-BMS wirelessly over Bluetooth LE (BLE)'
+description: 'Set up wireless JK-BMS monitoring on ESP32 using jk_bms_ble. Covers protocol version selection, MAC address discovery, and OTA-safe BLE configuration.'
+---
+
+The JK-BMS advertises a BLE service over the standard `0xFFE0` / `0xFFE1` characteristic pair. The `jk_bms_ble` component connects to the BMS as a BLE client, subscribes to notifications, and sends periodic request frames to receive cell voltages, temperatures, protection thresholds, and writable settings — all without any physical serial wiring.
+
+<Warning>
+BLE is only supported on **ESP32** boards. The ESP8266 has no Bluetooth hardware and cannot use this connection method. Use the [UART-TTL connection](/connection/uart-ttl) if you own an ESP8266.
+</Warning>
+
+## Prerequisites
+
+- An ESP32 board (any variant with BLE hardware)
+- The MAC address of your JK-BMS (see [finding the MAC address](#finding-the-mac-address) below)
+- The correct `protocol_version` for your hardware revision (see the table below)
+
+## Choosing the right protocol version
+
+The BMS firmware uses one of three frame formats depending on the hardware revision. Using the wrong version will result in garbled or absent sensor data.
+
+| `protocol_version` | Hardware version | Example models |
+|--------------------|-----------------|----------------|
+| `JK04`             | ≤ 3.0           | JK-B2A16S hw 3.0, JK-B5A24S hw 8.x (old 4-byte protocol) |
+| `JK02_24S`         | 6.0 – 10.x      | JK-B2A24S15P hw 8.x/10.x, JK-B2A24S20P hw 10.x |
+| `JK02_32S`         | 11.x and newer  | JK-B2A8S20P hw 11.XW, JK-B2A20S20P hw 11.XW |
+
+<Tip>
+If you are unsure of your hardware version, check the sticker on the BMS or look up the version reported by the official Jikong Android app. When in doubt, start with `JK02_24S` (6.x–10.x) and switch to `JK02_32S` (11.x+) if cell resistance sensors or additional temperature sensors are missing from the decoded data.
+</Tip>
+
+## Finding the MAC address
+
+The easiest way to find the BMS Bluetooth MAC address is with the `esp32_ble_tracker` component. Add the following minimal configuration, flash it, and watch the ESPHome logs for an advertisement from a device whose name starts with `JK`:
+
+```yaml
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+```
+
+The log will contain lines similar to:
+
+```text
+[esp32_ble_tracker] Found device C8:47:8C:E1:E2:AA RSSI=-63
+[esp32_ble_tracker]   Name: 'JK-B2A8S20P'
+```
+
+Copy the MAC address shown and use it as `mac_address` in your configuration.
+
+## Setup
+
+<Steps>
+  <Step title="Install the external component">
+    ```yaml
+    external_components:
+      - source: github://syssi/esphome-jk-bms@main
+        refresh: 0s
+    ```
+  </Step>
+
+  <Step title="Select the protocol version and set the MAC address">
+    Set the two substitution variables that drive the BLE configuration. Replace the MAC address with the one you found in the previous step.
+
+    <Tabs>
+      <Tab title="JK02_32S (hw 11.x+)">
+        ```yaml
+        substitutions:
+          mac_address: C8:47:8C:E1:E2:AA   # replace with your BMS MAC
+          protocol_version: JK02_32S
+        ```
+      </Tab>
+      <Tab title="JK02_24S (hw 6.x–10.x)">
+        ```yaml
+        substitutions:
+          mac_address: C8:47:8C:E1:E2:AA   # replace with your BMS MAC
+          protocol_version: JK02_24S
+        ```
+      </Tab>
+      <Tab title="JK04 (hw ≤ 3.0)">
+        ```yaml
+        substitutions:
+          mac_address: C8:47:8C:E1:E2:AA   # replace with your BMS MAC
+          protocol_version: JK04
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Configure the BLE stack and jk_bms_ble">
+    Add the `esp32_ble_tracker`, `ble_client`, and `jk_bms_ble` blocks. The `throttle` parameter controls how often the component re-requests new data from the BMS.
+
+    ```yaml
+    esp32_ble_tracker:
+      scan_parameters:
+        active: false
+
+    ble_client:
+      - mac_address: ${mac_address}
+        id: client0
+
+    jk_bms_ble:
+      - ble_client_id: client0
+        protocol_version: ${protocol_version}
+        throttle: 5s
+        id: bms0
+    ```
+  </Step>
+
+  <Step title="Add the BLE client switch for OTA compatibility">
+    OTA updates require the BLE radio to be idle. Add the `ble_client` switch and configure the `ota` block to turn it off before flashing begins. Without this, an OTA update attempt will time out because the BLE client holds the radio busy.
+
+    ```yaml
+    ota:
+      platform: esphome
+      on_begin:
+        then:
+          - switch.turn_off: ble_client_switch0
+          - logger.log: "BLE connection suspended for OTA update"
+
+    switch:
+      # … other switches …
+
+      - platform: ble_client
+        ble_client_id: client0
+        name: "enable bluetooth connection"
+        id: ble_client_switch0
+    ```
+  </Step>
+
+  <Step title="Declare sensors and controls">
+    The BLE platform exposes the same sensors as the UART platform plus cell resistance readings and a richer set of writable `number` entities. The example below shows the key entities; see the full reference YAML for the complete list.
+
+    ```yaml
+    binary_sensor:
+      - platform: jk_bms_ble
+        balancing:
+          name: "balancing"
+        charging:
+          name: "charging"
+        discharging:
+          name: "discharging"
+        heating:
+          name: "heating"
+        online_status:
+          name: "online status"
+
+    sensor:
+      - platform: jk_bms_ble
+        jk_bms_ble_id: bms0
+        min_cell_voltage:
+          name: "min cell voltage"
+        max_cell_voltage:
+          name: "max cell voltage"
+        delta_cell_voltage:
+          name: "delta cell voltage"
+        average_cell_voltage:
+          name: "average cell voltage"
+        cell_voltage_1:
+          name: "cell voltage 1"
+        # … cell_voltage_2 through cell_voltage_24 …
+        cell_resistance_1:
+          name: "cell resistance 1"
+        # … cell_resistance_2 through cell_resistance_24 …
+        total_voltage:
+          name: "total voltage"
+        current:
+          name: "current"
+        power:
+          name: "power"
+        state_of_charge:
+          name: "state of charge"
+        capacity_remaining:
+          name: "capacity remaining"
+        power_tube_temperature:
+          name: "power tube temperature"
+        temperature_sensor_1:
+          name: "temperature sensor 1"
+        temperature_sensor_2:
+          name: "temperature sensor 2"
+        charging_cycles:
+          name: "charging cycles"
+        total_runtime:
+          name: "total runtime"
+        balancing_current:
+          name: "balancing current"
+
+    number:
+      - platform: jk_bms_ble
+        jk_bms_ble_id: bms0
+        cell_voltage_overvoltage_protection:
+          name: "cell voltage overvoltage protection"
+        cell_voltage_undervoltage_protection:
+          name: "cell voltage undervoltage protection"
+        balance_trigger_voltage:
+          name: "balance trigger voltage"
+        total_battery_capacity:
+          name: "total battery capacity"
+        max_charge_current:
+          name: "max charge current"
+        max_discharge_current:
+          name: "max discharge current"
+
+    switch:
+      - platform: jk_bms_ble
+        charging:
+          name: "charging"
+        discharging:
+          name: "discharging"
+        balancer:
+          name: "balancer"
+
+      - platform: ble_client
+        ble_client_id: client0
+        name: "enable bluetooth connection"
+        id: ble_client_switch0
+
+    text_sensor:
+      - platform: jk_bms_ble
+        errors:
+          name: "errors"
+        software_version:
+          name: "software version"
+        hardware_version:
+          name: "hardware version"
+        total_runtime_formatted:
+          name: "total runtime formatted"
+    ```
+  </Step>
+</Steps>
+
+## Complete reference configuration
+
+The full YAML below mirrors the upstream `esp32-ble-example.yaml` with all sensors and controls enabled. Use it as a base and remove entities you do not need.
+
+```yaml
+substitutions:
+  name: jk-bms
+  device_description: "Monitor and control a JK-BMS via bluetooth"
+  external_components_source: github://syssi/esphome-jk-bms@main
+  mac_address: C8:47:8C:E1:E2:AA
+  # JK02_24S: hardware version >= 6.0 and < 11.0
+  # JK02_32S: hardware version >= 11.0
+  # JK04:     hardware version <= 3.0
+  protocol_version: JK02_24S
+
+esphome:
+  name: ${name}
+  friendly_name: ${name}
+  comment: ${device_description}
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: ${external_components_source}
+    refresh: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  platform: esphome
+  on_begin:
+    then:
+      - switch.turn_off: ble_client_switch0
+      - logger.log: "BLE connection suspended for OTA update"
+
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: INFO
+    esp32_ble_client: INFO
+
+api:
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+ble_client:
+  - mac_address: ${mac_address}
+    id: client0
+
+jk_bms_ble:
+  - ble_client_id: client0
+    protocol_version: ${protocol_version}
+    throttle: 5s
+    id: bms0
+
+binary_sensor:
+  - platform: jk_bms_ble
+    balancing:
+      name: "balancing"
+    charging:
+      name: "charging"
+    discharging:
+      name: "discharging"
+    heating:
+      name: "heating"
+    online_status:
+      name: "online status"
+
+button:
+  - platform: jk_bms_ble
+    retrieve_settings:
+      name: "retrieve settings"
+    retrieve_device_info:
+      name: "retrieve device info"
+
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    balance_trigger_voltage:
+      name: "balance trigger voltage"
+    cell_count:
+      name: "cell count"
+    total_battery_capacity:
+      name: "total battery capacity"
+    cell_voltage_overvoltage_protection:
+      name: "cell voltage overvoltage protection"
+    cell_voltage_overvoltage_recovery:
+      name: "cell voltage overvoltage recovery"
+    cell_voltage_undervoltage_protection:
+      name: "cell voltage undervoltage protection"
+    cell_voltage_undervoltage_recovery:
+      name: "cell voltage undervoltage recovery"
+    balance_starting_voltage:
+      name: "balance starting voltage"
+    max_balance_current:
+      name: "max balance current"
+    max_charge_current:
+      name: "max charge current"
+    max_discharge_current:
+      name: "max discharge current"
+    power_off_voltage:
+      name: "power off voltage"
+    charge_overcurrent_protection_delay:
+      name: "charge overcurrent protection delay"
+    discharge_overcurrent_protection_delay:
+      name: "discharge overcurrent protection delay"
+    charge_overtemperature_protection:
+      name: "charge overtemperature protection"
+    discharge_overtemperature_protection:
+      name: "discharge overtemperature protection"
+    charge_undertemperature_protection:
+      name: "charge undertemperature protection"
+    power_tube_overtemperature_protection:
+      name: "power tube overtemperature protection"
+
+sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    min_cell_voltage:
+      name: "min cell voltage"
+    max_cell_voltage:
+      name: "max cell voltage"
+    delta_cell_voltage:
+      name: "delta cell voltage"
+    average_cell_voltage:
+      name: "average cell voltage"
+    cell_voltage_1:
+      name: "cell voltage 1"
+    cell_voltage_2:
+      name: "cell voltage 2"
+    cell_voltage_3:
+      name: "cell voltage 3"
+    cell_voltage_4:
+      name: "cell voltage 4"
+    cell_resistance_1:
+      name: "cell resistance 1"
+    cell_resistance_2:
+      name: "cell resistance 2"
+    cell_resistance_3:
+      name: "cell resistance 3"
+    cell_resistance_4:
+      name: "cell resistance 4"
+    total_voltage:
+      name: "total voltage"
+    current:
+      name: "current"
+    heating_current:
+      name: "heating current"
+    power:
+      name: "power"
+    state_of_charge:
+      name: "state of charge"
+    capacity_remaining:
+      name: "capacity remaining"
+    total_battery_capacity_setting:
+      name: "total battery capacity setting"
+    power_tube_temperature:
+      name: "power tube temperature"
+    temperature_sensor_1:
+      name: "temperature sensor 1"
+    temperature_sensor_2:
+      name: "temperature sensor 2"
+    charging_cycles:
+      name: "charging cycles"
+    total_charging_cycle_capacity:
+      name: "total charging cycle capacity"
+    total_runtime:
+      name: "total runtime"
+    balancing_current:
+      name: "balancing current"
+    errors_bitmask:
+      name: "errors bitmask"
+
+switch:
+  - platform: jk_bms_ble
+    charging:
+      name: "charging"
+    discharging:
+      name: "discharging"
+    balancer:
+      name: "balancer"
+
+  - platform: ble_client
+    ble_client_id: client0
+    name: "enable bluetooth connection"
+    id: ble_client_switch0
+
+text_sensor:
+  - platform: jk_bms_ble
+    errors:
+      name: "errors"
+    total_runtime_formatted:
+      name: "total runtime formatted"
+    software_version:
+      name: "software version"
+    hardware_version:
+      name: "hardware version"
+```
+
+## Notes
+
+<Info>
+Reducing the `throttle` value below 5 s will increase data freshness but also increases BLE radio activity. Values below 2 s are not recommended and may cause connection instability on some BMS firmware versions.
+</Info>
+
+<Info>
+The `number` platform entities (cell voltage limits, current limits, temperatures) write configuration registers back to the BMS over BLE. This bidirectional control is only available via the BLE connection; the UART-TTL connection is read/write at the modbus level but the `jk_bms` UART platform only exposes read-only sensors and on/off switches.
+</Info>

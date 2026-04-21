@@ -1,0 +1,324 @@
+---
+title: "jk_bms: ESPHome UART Component for JK-BMS Monitoring"
+description: "Monitor and control JK-BMS battery management systems over UART with ESPHome. Full reference for sensors, binary sensors, switches, and text sensors."
+---
+
+The `jk_bms` component integrates JK-BMS battery management systems with ESPHome over the **GPS/UART port** using the proprietary JK Modbus protocol. It exposes cell voltages, temperatures, protection thresholds, and operational flags as ESPHome entities, and allows toggling the charge and discharge MOSFETs via switches.
+
+This component acts as a **polling device** on top of the `jk_modbus` bus. You must first define a `jk_modbus` hub that owns the UART interface, then attach one or more `jk_bms` instances to it. Because `MULTI_CONF = True`, multiple BMS units can share the same RS-485 bus with different device addresses.
+
+<Note>
+  Requires ESPHome **2025.7.0** or newer. The component auto-loads `jk_modbus`, `binary_sensor`, `sensor`, `switch`, and `text_sensor`.
+</Note>
+
+## Hardware Setup
+
+Connect an RS-485-to-TTL adapter (or a direct UART connection from the GPS port) between the BMS and your ESP32. The GPS port outputs at **115200 baud**.
+
+```
+JK-BMS GPS port  ──►  RS-485/TTL adapter  ──►  ESP32
+```
+
+## Configuration
+
+<Steps>
+  <Step title="Define the UART bus">
+    Declare a UART component at 115200 baud pointing at the physical pins connected to the adapter.
+  </Step>
+  <Step title="Define the JK Modbus hub">
+    Attach `jk_modbus` to the UART bus and set an appropriate `rx_timeout`.
+  </Step>
+  <Step title="Declare one or more jk_bms devices">
+    Reference the `jk_modbus` hub and set `update_interval`.
+  </Step>
+  <Step title="Add sensor/switch/text_sensor platforms">
+    Each platform block references the `jk_bms` hub via its auto-generated ID.
+  </Step>
+</Steps>
+
+## Complete Example
+
+The following configuration is drawn directly from `esp32-example.yaml` in the upstream repository.
+
+```yaml
+substitutions:
+  name: jk-bms
+  device_description: "Monitor a JK-BMS using the GPS port (UART-TTL)"
+  external_components_source: github://syssi/esphome-jk-bms@main
+  tx_pin: GPIO16
+  rx_pin: GPIO17
+
+esphome:
+  name: ${name}
+  friendly_name: ${name}
+  comment: ${device_description}
+  project:
+    name: "syssi.esphome-jk-bms"
+    version: 2.4.0
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: ${external_components_source}
+    refresh: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  platform: esphome
+
+logger:
+  level: DEBUG
+
+api:
+
+uart:
+  - id: uart_0
+    baud_rate: 115200
+    rx_buffer_size: 384
+    tx_pin: ${tx_pin}
+    rx_pin: ${rx_pin}
+
+jk_modbus:
+  - id: modbus0
+    uart_id: uart_0
+    rx_timeout: 50ms
+
+jk_bms:
+  - id: bms0
+    jk_modbus_id: modbus0
+    update_interval: 5s
+
+binary_sensor:
+  - platform: jk_bms
+    balancing:
+      name: "balancing"
+    balancing_switch:
+      name: "balancing switch"
+    charging:
+      name: "charging"
+    discharging:
+      name: "discharging"
+    dedicated_charger_switch:
+      name: "dedicated charger switch"
+    online_status:
+      name: "online status"
+
+sensor:
+  - platform: jk_bms
+    min_cell_voltage:
+      name: "min cell voltage"
+    max_cell_voltage:
+      name: "max cell voltage"
+    delta_cell_voltage:
+      name: "delta cell voltage"
+    average_cell_voltage:
+      name: "average cell voltage"
+    cell_voltage_1:
+      name: "cell voltage 1"
+    # … cell_voltage_2 through cell_voltage_24
+    power_tube_temperature:
+      name: "power tube temperature"
+    temperature_sensor_1:
+      name: "temperature sensor 1"
+    temperature_sensor_2:
+      name: "temperature sensor 2"
+    total_voltage:
+      name: "total voltage"
+    current:
+      name: "current"
+    power:
+      name: "power"
+    charging_power:
+      name: "charging power"
+    discharging_power:
+      name: "discharging power"
+    capacity_remaining:
+      name: "capacity remaining"
+    charging_cycles:
+      name: "charging cycles"
+    errors_bitmask:
+      name: "errors bitmask"
+
+switch:
+  - platform: jk_bms
+    charging:
+      name: "charging"
+    discharging:
+      name: "discharging"
+
+text_sensor:
+  - platform: jk_bms
+    errors:
+      name: "errors"
+    operation_mode:
+      name: "operation mode"
+    battery_type:
+      name: "battery type"
+    device_type:
+      name: "device type"
+    software_version:
+      name: "software version"
+    manufacturer:
+      name: "manufacturer"
+    total_runtime_formatted:
+      name: "total runtime formatted"
+```
+
+## Component Configuration
+
+<ParamField path="jk_modbus_id" type="string" required>
+  ID of the `jk_modbus` hub this BMS is attached to. Automatically resolved when only one hub is defined.
+</ParamField>
+
+<ParamField path="update_interval" type="time" default="5s">
+  How often the component polls the BMS for new data. Inherits ESPHome's standard polling component schema. Default is `5s`.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Optional ID used to reference this BMS instance from sensor/switch/text_sensor platform blocks when multiple BMS units are configured.
+</ParamField>
+
+<Note>
+  `MULTI_CONF = True` — you can declare multiple `jk_bms` blocks to monitor several battery packs on the same RS-485 bus. Each unit must have a unique Modbus device address (default `0x4E`).
+</Note>
+
+## Supported Platforms
+
+### Sensor
+
+All sensor keys are optional. Cell voltages are named `cell_voltage_1` through `cell_voltage_24`.
+
+<AccordionGroup>
+  <Accordion title="Cell voltage sensors">
+
+| Key | Unit | Notes |
+|-----|------|-------|
+| `cell_voltage_1` … `cell_voltage_24` | V | Individual cell voltages |
+| `min_cell_voltage` | V | Lowest cell voltage |
+| `max_cell_voltage` | V | Highest cell voltage |
+| `min_voltage_cell` | — | Cell number with lowest voltage |
+| `max_voltage_cell` | — | Cell number with highest voltage |
+| `delta_cell_voltage` | V | Spread between min and max |
+| `average_cell_voltage` | V | Mean cell voltage |
+
+  </Accordion>
+  <Accordion title="Pack-level sensors">
+
+| Key | Unit | Notes |
+|-----|------|-------|
+| `total_voltage` | V | Total pack voltage |
+| `current` | A | Pack current (positive = charge) |
+| `power` | W | Total instantaneous power |
+| `charging_power` | W | Charging power only |
+| `discharging_power` | W | Discharging power only |
+| `capacity_remaining` | % | State of charge |
+| `capacity_remaining_derived` | Ah | Derived remaining capacity |
+| `charging_cycles` | — | Cumulative charge cycle count |
+| `total_charging_cycle_capacity` | Ah | Total Ah processed |
+| `battery_strings` | — | Number of cells in series |
+| `temperature_sensors` | — | Number of NTC sensors detected |
+
+  </Accordion>
+  <Accordion title="Temperature sensors">
+
+| Key | Unit |
+|-----|------|
+| `power_tube_temperature` | °C |
+| `temperature_sensor_1` | °C |
+| `temperature_sensor_2` | °C |
+
+  </Accordion>
+  <Accordion title="Protection threshold sensors">
+
+| Key | Unit |
+|-----|------|
+| `total_voltage_overvoltage_protection` | V |
+| `total_voltage_undervoltage_protection` | V |
+| `cell_voltage_overvoltage_protection` | V |
+| `cell_voltage_overvoltage_recovery` | V |
+| `cell_voltage_overvoltage_delay` | s |
+| `cell_voltage_undervoltage_protection` | V |
+| `cell_voltage_undervoltage_recovery` | V |
+| `cell_voltage_undervoltage_delay` | s |
+| `cell_pressure_difference_protection` | V |
+| `discharging_overcurrent_protection` | A |
+| `discharging_overcurrent_delay` | s |
+| `charging_overcurrent_protection` | A |
+| `charging_overcurrent_delay` | s |
+| `balance_starting_voltage` | V |
+| `balance_opening_pressure_difference` | V |
+| `power_tube_temperature_protection` | °C |
+| `power_tube_temperature_recovery` | °C |
+| `temperature_sensor_temperature_protection` | °C |
+| `temperature_sensor_temperature_recovery` | °C |
+| `temperature_sensor_temperature_difference_protection` | °C |
+| `charging_high_temperature_protection` | °C |
+| `discharging_high_temperature_protection` | °C |
+| `charging_low_temperature_protection` | °C |
+| `charging_low_temperature_recovery` | °C |
+| `discharging_low_temperature_protection` | °C |
+| `discharging_low_temperature_recovery` | °C |
+
+  </Accordion>
+  <Accordion title="Configuration & diagnostic sensors">
+
+| Key | Unit | Notes |
+|-----|------|-------|
+| `total_battery_capacity_setting` | Ah | Configured nominal capacity |
+| `actual_battery_capacity` | Ah | Measured actual capacity |
+| `current_calibration` | A | Current sensor calibration offset |
+| `device_address` | — | BMS Modbus address |
+| `sleep_wait_time` | s | Sleep mode timeout |
+| `alarm_low_volume` | % | Low capacity alarm threshold |
+| `manufacturing_date` | — | BMS manufacturing date |
+| `total_runtime` | h | Cumulative operating hours |
+| `errors_bitmask` | — | Raw error flags (diagnostic) |
+| `operation_mode_bitmask` | — | Raw operation mode flags (diagnostic) |
+| `protocol_version` | — | BMS protocol version number |
+| `start_current_calibration` | — | Start calibration trigger value |
+
+  </Accordion>
+</AccordionGroup>
+
+### Binary Sensor
+
+| Key | Notes |
+|-----|-------|
+| `charging` | True while charging MOSFET is active |
+| `discharging` | True while discharging MOSFET is active |
+| `balancing` | True while cell balancing is active |
+| `balancing_switch` | State of the balancing switch setting |
+| `charging_switch` | *(Deprecated)* Use `switch.charging` instead |
+| `discharging_switch` | *(Deprecated)* Use `switch.discharging` instead |
+| `dedicated_charger_switch` | State of the dedicated charger port switch |
+| `online_status` | Connectivity — true when BMS is responding |
+
+### Switch
+
+| Key | Register | Notes |
+|-----|----------|-------|
+| `charging` | `0xAB` | Toggle charge MOSFET on/off |
+| `discharging` | `0xAC` | Toggle discharge MOSFET on/off |
+
+<Warning>
+  The `balancer` switch (`0x9D`) is defined in source but is commented out because BMS hardware version 11 does not accept writes to that register reliably. Do not expose it unless you have confirmed your hardware supports it.
+</Warning>
+
+### Text Sensor
+
+| Key | Notes |
+|-----|-------|
+| `operation_mode` | Human-readable operation mode string |
+| `errors` | Decoded error description string (diagnostic) |
+| `battery_type` | Battery chemistry (e.g. LFP, NCM) |
+| `password` | BMS password |
+| `device_type` | BMS model string (diagnostic) |
+| `software_version` | Firmware version string (diagnostic) |
+| `manufacturer` | Manufacturer string (diagnostic) |
+| `total_runtime_formatted` | Runtime formatted as `0d 0h 0m 0s` |

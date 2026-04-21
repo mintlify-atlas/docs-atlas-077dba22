@@ -1,0 +1,110 @@
+---
+title: "Integrate JK-BMS with MQTT Brokers and Other Systems"
+description: "Publish JK-BMS sensor data over MQTT. Covers broker configuration, topic structure, secrets.yaml, and when to choose MQTT over the native ESPHome API."
+---
+
+The ESPHome `mqtt:` component publishes every JK-BMS sensor value to an MQTT broker as soon as a new reading arrives. This makes it straightforward to consume BMS data in Node-RED, Grafana, openHAB, or any other system that supports MQTT. If your primary target is Home Assistant, the [native API](/integration/home-assistant) is a simpler and more efficient choice — but MQTT is the right tool when you need a message broker in the middle or want to fan out data to multiple consumers.
+
+## When to use MQTT
+
+<CardGroup cols={2}>
+  <Card title="Use MQTT when" icon="check">
+    You are integrating with non-Home Assistant systems such as Node-RED, openHAB, Grafana, or a custom application. You need multiple systems to consume the same BMS data simultaneously.
+  </Card>
+  <Card title="Use native API when" icon="house">
+    Home Assistant is your only integration target. You want auto-discovery, encrypted communication, and no broker to maintain. See the [Home Assistant guide](/integration/home-assistant).
+  </Card>
+</CardGroup>
+
+## Prerequisites
+
+You need a running MQTT broker reachable from the ESP32's network. [Mosquitto](https://mosquitto.org/) is a common choice and is available as a Home Assistant add-on, a Docker container, or a standalone package on most Linux distributions.
+
+## Configuration
+
+### mqtt: block
+
+Add the following to your ESPHome YAML. The `esp32-example.yaml` in the project repository uses this configuration as its default.
+
+```yaml
+# If you use Home Assistant, remove this block and use `api:` instead.
+mqtt:
+  broker: !secret mqtt_host
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  id: mqtt_client
+```
+
+<Note>
+  The `esp32-ble-example.yaml` uses `api:` by default and has the `mqtt:` block commented out. To switch, comment out `api:` and uncomment `mqtt:`.
+</Note>
+
+### secrets.yaml
+
+Store your broker credentials in `secrets.yaml` in the same directory as your ESPHome YAML file. Never commit this file to version control.
+
+```yaml
+wifi_ssid: MY_WIFI_SSID
+wifi_password: MY_WIFI_PASSWORD
+
+mqtt_host: 192.168.1.10
+mqtt_username: esphome
+mqtt_password: a-strong-password
+```
+
+The `!secret` references in the `mqtt:` block pull values from this file at compile time.
+
+## Topic structure
+
+ESPHome publishes sensor states using the following topic pattern by default:
+
+```
+<device_name>/sensor/<sensor_id>/state
+```
+
+With the default device name `jk-bms`, example topics look like:
+
+| Sensor | MQTT topic |
+|--------|-----------|
+| Cell voltage 1 | `jk-bms/sensor/cell_voltage_1/state` |
+| Total voltage | `jk-bms/sensor/total_voltage/state` |
+| Current | `jk-bms/sensor/current/state` |
+| Capacity remaining | `jk-bms/sensor/capacity_remaining/state` |
+| Power tube temperature | `jk-bms/sensor/power_tube_temperature/state` |
+| Errors (text sensor) | `jk-bms/text_sensor/errors/state` |
+| Battery type (text sensor) | `jk-bms/text_sensor/battery_type/state` |
+| Charging (switch state) | `jk-bms/switch/charging/state` |
+
+ESPHome also publishes availability on `jk-bms/status` (`online` / `offline`) and accepts switch commands on `jk-bms/switch/<switch_id>/command`.
+
+<Tip>
+  Use `mosquitto_sub -h <broker_host> -t 'jk-bms/#' -v` to watch all JK-BMS messages in real time while commissioning.
+</Tip>
+
+## Verifying the connection
+
+After flashing, open the ESPHome logs with `esphome logs esp32-example.yaml`. A successful MQTT connection produces output similar to:
+
+```
+[mqtt.client:141]: Connecting to MQTT broker...
+[mqtt.client:161]: Connected to MQTT broker!
+[mqtt.client:175]: MQTT broker confirmed subscription to jk-bms/#
+[sensor:127]: 'jk-bms total voltage': Sending state 53.64 V
+```
+
+If you see repeated `Connecting to MQTT broker...` messages without a `Connected` line, check that the broker address, port (default 1883), username, and password in `secrets.yaml` are correct and that the broker is reachable from the ESP32's subnet.
+
+## Customising the base topic
+
+To change the root topic prefix, add a `topic_prefix` key to the `mqtt:` block:
+
+```yaml
+mqtt:
+  broker: !secret mqtt_host
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  id: mqtt_client
+  topic_prefix: battery/pack1
+```
+
+All sensor topics will then be published under `battery/pack1/sensor/...`.

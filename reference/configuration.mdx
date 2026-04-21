@@ -1,0 +1,362 @@
+---
+title: "JK-BMS ESPHome Component Configuration Reference"
+description: "Complete configuration reference for all esphome-jk-bms components: jk_modbus, jk_bms, jk_bms_ble, heltec_balancer_ble, and jk_bms_display."
+---
+
+This page documents every configuration option for each component in the esphome-jk-bms project. All components are loaded as ESPHome external components from the `syssi/esphome-jk-bms` GitHub repository. Choose the sections relevant to your connection method — UART-TTL or BLE — and refer to the complete example at the bottom of the page to see how all options fit together.
+
+<Note>
+  - `jk_modbus`, `jk_bms`, and `jk_bms_ble` require ESPHome **2025.7.0** or higher.
+  - `heltec_balancer_ble` requires ESPHome **2025.11.0** or higher.
+  - `jk_bms_display` requires ESPHome **2024.12.0** or higher.
+</Note>
+
+## `external_components`
+
+Before using any component, declare the external component source in your ESPHome YAML. This pulls the component code directly from GitHub at compile time.
+
+```yaml
+external_components:
+  - source: github://syssi/esphome-jk-bms@main
+    refresh: 0s
+```
+
+Set `refresh: 0s` to avoid re-fetching the source on every build. To pin to a specific release, replace `main` with a tag such as `@2.4.0`.
+
+---
+
+## `jk_modbus`
+
+The `jk_modbus` component implements the serial communication bus for UART-TTL connections. It wraps an ESPHome `uart` component and handles the framing and timeout logic for the JK-BMS Modbus variant. You must configure a matching `uart` block (115200 baud, 384-byte RX buffer) before declaring `jk_modbus`.
+
+<ParamField path="uart_id" type="string" required>
+  The ID of the `uart` component this bus communicates over. Must reference a `uart` block configured at 115200 baud with at least a 384-byte `rx_buffer_size`.
+</ParamField>
+
+<ParamField path="rx_timeout" type="duration" default="50ms">
+  How long to wait for the end of a response frame before treating the receive buffer as a complete message. Increase this value on noisy or slow serial links; decrease it if you see spurious partial reads.
+</ParamField>
+
+<ParamField path="flow_control_pin" type="pin">
+  Optional GPIO pin to drive a half-duplex RS-485 transceiver's direction-control line. When set, the pin is asserted high before transmission and released after. Omit for direct UART-TTL connections.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Unique identifier for this `jk_modbus` instance. Required when you declare multiple buses or when the downstream `jk_bms` component needs to reference it explicitly via `jk_modbus_id`.
+</ParamField>
+
+```yaml
+uart:
+  - id: uart_0
+    baud_rate: 115200
+    rx_buffer_size: 384
+    tx_pin: GPIO16
+    rx_pin: GPIO17
+
+jk_modbus:
+  - id: modbus0
+    uart_id: uart_0
+    rx_timeout: 50ms
+```
+
+---
+
+## `jk_bms`
+
+The `jk_bms` component polls a JK-BMS over the `jk_modbus` bus and exposes its data as ESPHome sensors, binary sensors, switches, and text sensors. It supports `MULTI_CONF`, so you can declare multiple instances to monitor several BMS units on the same UART bus using different device addresses.
+
+<ParamField path="jk_modbus_id" type="string" required>
+  The ID of the `jk_modbus` component this BMS is connected through. Omit only if there is a single `jk_modbus` instance in the configuration, in which case it is resolved automatically.
+</ParamField>
+
+<ParamField path="update_interval" type="duration" default="5s">
+  How often to poll the BMS for fresh data. Polling is synchronous over the UART bus, so setting very short intervals on multi-device configurations may cause bus contention. `5s` is a safe default for most setups.
+</ParamField>
+
+<ParamField path="address" type="hex" default="0x4E">
+  The Modbus device address of the BMS. The factory default is `0x4E` (decimal 78). Change this only if you have reconfigured the BMS address via the JK app or are monitoring multiple units on one bus.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Unique identifier for this `jk_bms` instance. Required when using `MULTI_CONF` to run multiple BMS instances, so that sensor platforms can reference the correct instance with `jk_bms_id`.
+</ParamField>
+
+<Note>
+  `jk_bms` has `MULTI_CONF = True`, meaning you can declare multiple `jk_bms` entries in a single configuration. Each must have a unique `id` and, if on the same bus, a distinct `address`.
+</Note>
+
+```yaml
+jk_bms:
+  - id: bms0
+    jk_modbus_id: modbus0
+    update_interval: 5s
+    address: 0x4E
+```
+
+---
+
+## `jk_bms_ble`
+
+The `jk_bms_ble` component connects to a JK-BMS over Bluetooth Low Energy via an ESPHome `ble_client`. It exposes the same sensors as `jk_bms` over UART, plus writable number entities for protection thresholds, and additional switches available only on newer firmware. Requires an `esp32_ble_tracker` and `ble_client` block in your configuration.
+
+<ParamField path="ble_client_id" type="string" required>
+  The ID of the `ble_client` component configured with your BMS MAC address. You must configure one `ble_client` entry per BMS.
+</ParamField>
+
+<ParamField path="protocol_version" type="string" required>
+  The BLE protocol variant used by your BMS hardware. Must be one of:
+  - `JK04` — hardware version ≤ 3.0 (e.g., JK-B2A16S hw 3.0, sw 3.3.0)
+  - `JK02_24S` — hardware version ≥ 6.0 and < 11.0 (e.g., JK-B2A24S20P hw 8.x, sw 8.1.2H)
+  - `JK02_32S` — hardware version ≥ 11.0 (e.g., JK-B2A8S20P hw 11.XW, sw 11.26)
+
+  See the [protocol versions reference](/reference/protocol-versions) for full guidance on identifying the right value.
+</ParamField>
+
+<ParamField path="throttle" type="duration" default="2s">
+  Minimum time between processing two consecutive BLE notification frames. The BMS pushes data continuously; this rate-limits how often ESPHome processes and publishes state updates. Increase this value to reduce CPU load and HA event floods. The example YAMLs use `5s`.
+</ParamField>
+
+<ParamField path="update_interval" type="duration" default="5s">
+  Interval at which ESPHome requests a settings frame from the BMS. This triggers retrieval of protection thresholds and configuration parameters, separate from the continuous cell-data notifications.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Unique identifier for this `jk_bms_ble` instance. Required when monitoring multiple BMS units in one configuration so that sensor and number platforms can reference the correct instance with `jk_bms_ble_id`.
+</ParamField>
+
+<Note>
+  `jk_bms_ble` has `MULTI_CONF = True`. To monitor two BMS units simultaneously, declare two `ble_client` entries with different MAC addresses and two `jk_bms_ble` entries referencing them.
+</Note>
+
+```yaml
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+ble_client:
+  - mac_address: C8:47:8C:E1:E2:AA
+    id: client0
+
+jk_bms_ble:
+  - id: bms0
+    ble_client_id: client0
+    protocol_version: JK02_32S
+    throttle: 5s
+    update_interval: 5s
+```
+
+---
+
+## `heltec_balancer_ble`
+
+The `heltec_balancer_ble` component monitors NEEY/Heltec Smart Active Balancers over BLE. It uses the same `ble_client` infrastructure as `jk_bms_ble` but speaks the Heltec balancer protocol. Supported devices include the GW-24S4EB (NEEY 4A) and EK-24S15EB (NEEY 15A) models.
+
+<ParamField path="ble_client_id" type="string" required>
+  The ID of the `ble_client` component configured with your balancer's MAC address.
+</ParamField>
+
+<ParamField path="throttle" type="duration" default="2s">
+  Minimum time between processing consecutive BLE notification frames from the balancer.
+</ParamField>
+
+<ParamField path="update_interval" type="duration" default="5s">
+  Interval at which the component requests a fresh data frame from the balancer.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Unique identifier for this `heltec_balancer_ble` instance. Required when using multiple balancers in a single configuration.
+</ParamField>
+
+```yaml
+ble_client:
+  - mac_address: AA:BB:CC:DD:EE:FF
+    id: balancer_client0
+
+heltec_balancer_ble:
+  - id: balancer0
+    ble_client_id: balancer_client0
+    throttle: 2s
+    update_interval: 5s
+```
+
+---
+
+## `jk_bms_display`
+
+The `jk_bms_display` component reads data from the JK-BMS display port (RS-485) using a passive RS-485-to-TTL adapter. It is receive-only and exposes a subset of BMS data as sensors and binary sensors. The display port transmits at 2400 baud; configure your `uart` block accordingly.
+
+<ParamField path="uart_id" type="string" required>
+  The ID of the `uart` component connected to the RS-485-to-TTL adapter wired to the BMS display port. Must be configured at 2400 baud with only `rx_pin` — this is a receive-only interface.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Unique identifier for this `jk_bms_display` instance.
+</ParamField>
+
+<Warning>
+  The display port uses RS-485 signaling. You need an RS-485-to-TTL module between the BMS and your ESP. Do not connect the display port directly to an ESP UART pin.
+</Warning>
+
+```yaml
+uart:
+  - id: uart_0
+    baud_rate: 2400
+    rx_pin: GPIO17
+
+jk_bms_display:
+  - id: display0
+    uart_id: uart_0
+```
+
+---
+
+## Complete configuration examples
+
+<Tabs>
+  <Tab title="UART-TTL (jk_bms)">
+    ```yaml
+    external_components:
+      - source: github://syssi/esphome-jk-bms@main
+        refresh: 0s
+
+    uart:
+      - id: uart_0
+        baud_rate: 115200
+        rx_buffer_size: 384
+        tx_pin: GPIO16
+        rx_pin: GPIO17
+
+    jk_modbus:
+      - id: modbus0
+        uart_id: uart_0
+        rx_timeout: 50ms
+
+    jk_bms:
+      - id: bms0
+        jk_modbus_id: modbus0
+        update_interval: 5s
+        address: 0x4E
+
+    sensor:
+      - platform: jk_bms
+        jk_bms_id: bms0
+        total_voltage:
+          name: "total voltage"
+        current:
+          name: "current"
+        capacity_remaining:
+          name: "capacity remaining"
+        power_tube_temperature:
+          name: "power tube temperature"
+    ```
+  </Tab>
+  <Tab title="BLE (jk_bms_ble)">
+    ```yaml
+    external_components:
+      - source: github://syssi/esphome-jk-bms@main
+        refresh: 0s
+
+    esp32_ble_tracker:
+      scan_parameters:
+        active: false
+
+    ble_client:
+      - mac_address: C8:47:8C:E1:E2:AA
+        id: client0
+
+    jk_bms_ble:
+      - id: bms0
+        ble_client_id: client0
+        protocol_version: JK02_32S
+        throttle: 5s
+        update_interval: 5s
+
+    sensor:
+      - platform: jk_bms_ble
+        jk_bms_ble_id: bms0
+        total_voltage:
+          name: "total voltage"
+        current:
+          name: "current"
+        state_of_charge:
+          name: "state of charge"
+        power_tube_temperature:
+          name: "power tube temperature"
+
+    switch:
+      - platform: jk_bms_ble
+        charging:
+          name: "charging"
+        discharging:
+          name: "discharging"
+        balancer:
+          name: "balancer"
+    ```
+  </Tab>
+  <Tab title="BLE (multiple devices)">
+    ```yaml
+    external_components:
+      - source: github://syssi/esphome-jk-bms@main
+        refresh: 0s
+
+    esp32_ble_tracker:
+      scan_parameters:
+        active: false
+
+    ble_client:
+      - mac_address: C8:47:8C:E1:E2:AA
+        id: client0
+      - mac_address: C8:47:8C:E1:E2:BB
+        id: client1
+
+    jk_bms_ble:
+      - id: bms0
+        ble_client_id: client0
+        protocol_version: JK02_32S
+        throttle: 5s
+      - id: bms1
+        ble_client_id: client1
+        protocol_version: JK02_32S
+        throttle: 5s
+
+    sensor:
+      - platform: jk_bms_ble
+        jk_bms_ble_id: bms0
+        total_voltage:
+          name: "total voltage bms0"
+      - platform: jk_bms_ble
+        jk_bms_ble_id: bms1
+        total_voltage:
+          name: "total voltage bms1"
+    ```
+  </Tab>
+  <Tab title="Display port (jk_bms_display)">
+    ```yaml
+    external_components:
+      - source: github://syssi/esphome-jk-bms@main
+        refresh: 0s
+
+    uart:
+      - id: uart_0
+        baud_rate: 2400
+        rx_pin: GPIO17
+
+    jk_bms_display:
+      - id: display0
+        uart_id: uart_0
+
+    sensor:
+      - platform: jk_bms_display
+        total_voltage:
+          name: "total voltage"
+        current:
+          name: "current"
+        state_of_charge:
+          name: "state of charge"
+        min_cell_voltage:
+          name: "min cell voltage"
+        max_cell_voltage:
+          name: "max cell voltage"
+    ```
+  </Tab>
+</Tabs>

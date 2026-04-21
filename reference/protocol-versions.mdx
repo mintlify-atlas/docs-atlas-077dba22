@@ -1,0 +1,193 @@
+---
+title: "JK-BMS BLE Protocol Versions: JK04, JK02_24S, JK02_32S"
+description: "Choose the right protocol_version for your JK-BMS BLE connection. Covers hardware version ranges, device tables, and wrong-protocol symptoms."
+---
+
+The `jk_bms_ble` component requires you to declare a `protocol_version` that matches your physical hardware. Jikong has shipped three distinct BLE protocol variants across hardware generations. Using the wrong value will result in garbled sensor readings or no data at all. This page explains how to identify your hardware version and choose the correct protocol.
+
+<Warning>
+  `protocol_version` is a required field with no default. The component will fail to compile if it is omitted.
+</Warning>
+
+## The three protocol versions
+
+<AccordionGroup>
+  <Accordion title="JK04 — hardware version ≤ 3.0 (very old devices)" defaultOpen={false}>
+    Use `JK04` only for the oldest JK-BMS hardware. These units predate the JK02 protocol series and expose a reduced set of data over BLE. The sensor surface available under `JK04` is smaller than `JK02_24S` or `JK02_32S` — notably, charging/discharging binary sensors and writable number entities are not available.
+
+    **Hardware version range:** ≤ 3.0
+
+    **Confirmed working devices:**
+
+    | Model | Hardware version | Software version |
+    |---|---|---|
+    | JK-B2A16S | hw 3.0 | sw 3.3.0 |
+    | JK-B5A24S | hw 8.x | sw 8.0.3M |
+
+    <Note>
+      The JK-B5A24S ships with `hw 8.x` but uses the `JK04` protocol. Hardware version alone is not always sufficient — confirm with the software version in the BMS app.
+    </Note>
+
+    ```yaml
+    jk_bms_ble:
+      - ble_client_id: client0
+        protocol_version: JK04
+        throttle: 5s
+        id: bms0
+    ```
+  </Accordion>
+
+  <Accordion title="JK02_24S — hardware version ≥ 6.0 and < 11.0" defaultOpen={false}>
+    Use `JK02_24S` for the majority of mid-generation JK-BMS units. This is the most commonly deployed protocol version and supports the full sensor set, writable protection thresholds, and charging/discharging/balancer switches. Cell data is structured for up to 24 cell strings.
+
+    **Hardware version range:** ≥ 6.0 and < 11.0
+
+    **Confirmed working devices:**
+
+    | Model | Hardware version | Software version |
+    |---|---|---|
+    | JK-B2A24S20P | hw 8.x | sw 8.1.2H |
+    | JK-B2A24S20P | hw 8.x | sw 8.20G |
+    | JK-B2A24S20P | hw 10.X-W | sw 10.02 |
+    | JK-B2A24S20P | hw 10.XG | sw 10.07D30 |
+    | JK-B2A24S20P | hw 10.XW | sw 10.07 |
+    | JK-B2A24S20P | hw 10.XW | sw 10.09 |
+    | JK-B2A24S15P | hw 10.xw | sw 10.07 |
+    | JK-B2A8S20P | hw 9.x | sw 9.01M3 |
+    | JK-B1A20S15P | hw 10.xw | sw 10.10 |
+    | JK-BD6A20S10P | hw 10.XW | sw 10.07 |
+    | JK-BD6A24S10P | hw 10.xw | sw 10.09 |
+    | JK-B2A20S20P | hw 10.XW | sw 10.10 |
+
+    ```yaml
+    jk_bms_ble:
+      - ble_client_id: client0
+        protocol_version: JK02_24S
+        throttle: 5s
+        id: bms0
+    ```
+  </Accordion>
+
+  <Accordion title="JK02_32S — hardware version ≥ 11.0 (newest devices)" defaultOpen={false}>
+    Use `JK02_32S` for all current-generation JK-BMS hardware. The `JK02_32S` protocol extends the cell data frame to support up to 32 cell strings and adds additional sensors and switches not present in earlier protocol versions, including `emergency`, `heating`, `smart_sleep`, `display_always_on`, and additional temperature sensors (`temperature_sensor_3`, `temperature_sensor_4`).
+
+    **Hardware version range:** ≥ 11.0
+
+    **Confirmed working devices:**
+
+    | Model | Hardware version | Software version |
+    |---|---|---|
+    | JK-B2A8S20P | hw 11.XW | sw 11.17 |
+    | JK-B2A8S20P | hw 11.XW | sw 11.26 |
+    | JK-B2A20S20P | hw 11.XW | sw 11.24H |
+    | JK-B2A20S20P | hw 11.XW | sw 11.25H |
+    | JK-B2A20S20P | hw 11.XW | sw 11.284 |
+    | JK-B2A20S20P | hw 11.XA | sw 11.48 |
+    | JK-B2A20S20P | hw 11.U | sw 11.54 |
+    | JK-BD4A8S4P | hw 11.xw | sw 11.24 |
+    | JK-BD4A17S4P | hw 11.xw | sw 11.27 |
+    | JK-BD6A24S12P | hw 11.XW | sw 11.36 |
+    | JK-BD6A24S12P | hw 11.XW | sw 11.42 |
+    | JK-B1A8S10P | hw 11.XW | sw 11.261 |
+    | JK-B1A16S15P | hw 11.5 | sw 11.261 |
+
+    ```yaml
+    jk_bms_ble:
+      - ble_client_id: client0
+        protocol_version: JK02_32S
+        throttle: 5s
+        id: bms0
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Quick selection guide
+
+| Your hardware version | Use this protocol |
+|---|---|
+| ≤ 3.0 | `JK04` |
+| ≥ 6.0 and < 11.0 | `JK02_24S` |
+| ≥ 11.0 | `JK02_32S` |
+
+<Tip>
+  When in doubt between `JK02_24S` and `JK02_32S`, check the software version shown in the JikongBMS app. Software versions starting with `11.` virtually always require `JK02_32S`, while versions starting with `6.` through `10.` use `JK02_24S`.
+</Tip>
+
+---
+
+## How to find your hardware and software version
+
+Your BMS hardware and software versions are displayed in the official JikongBMS Android or iOS app.
+
+<Steps>
+  <Step title="Open the JikongBMS app">
+    Connect to your BMS via the official app using your phone's Bluetooth. The app is available as "JikongBMS" on Android and iOS.
+  </Step>
+  <Step title="Navigate to device information">
+    Once connected, go to the **Device Info** or **About** section of the app. The hardware version (shown as "HW" or "Hardware Version") and software version (shown as "SW" or "Software Version") are listed there.
+  </Step>
+  <Step title="Match to the table above">
+    Use the hardware version number to select your protocol. If your hardware version starts with `11`, use `JK02_32S`. For `6` through `10`, use `JK02_24S`. For `3.0` or below, use `JK04`.
+  </Step>
+</Steps>
+
+You can also read the `hardware_version` and `software_version` text sensors from `jk_bms_ble` after initial connection, even with the wrong protocol set — but note that with a mismatched protocol the values reported may not be accurate.
+
+---
+
+## Symptoms of the wrong protocol version
+
+If you select the wrong `protocol_version`, you will typically see one or more of these symptoms:
+
+<AccordionGroup>
+  <Accordion title="All sensor values are zero or nonsensical">
+    The frame parser expects bytes at specific offsets. A wrong protocol causes the parser to read cell voltages, current, and temperature from the wrong byte positions, producing zeros or clearly wrong values (e.g., 0.000 V for all cells, -327 °C for temperature).
+  </Accordion>
+  <Accordion title="No data published at all">
+    Some frame format mismatches cause the checksum validation to fail on every received frame, so no state updates are published. The ESPHome log will show repeated warnings about invalid frames or checksum errors.
+  </Accordion>
+  <Accordion title="Sensors appear but values never update">
+    The throttle and update_interval logic runs normally but each incoming frame is discarded because the start byte or length field does not match the expected layout for the configured protocol.
+  </Accordion>
+  <Accordion title="Missing sensors compared to what the BMS app shows">
+    If you use `JK02_24S` on a hardware 11.x device, sensors that only exist in the `JK02_32S` frame (such as `emergency_time_countdown`, `temperature_sensor_3`, `temperature_sensor_4`) will not be available.
+  </Accordion>
+</AccordionGroup>
+
+If you are unsure which protocol version to use and the BMS app is not available, try `JK02_32S` first for any hardware version 8.x or higher and watch the ESPHome log for valid voltage readings. Fall back to `JK02_24S` if values look wrong.
+
+---
+
+## YAML snippet
+
+```yaml
+external_components:
+  - source: github://syssi/esphome-jk-bms@main
+    refresh: 0s
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+ble_client:
+  - mac_address: C8:47:8C:E1:E2:AA
+    id: client0
+
+jk_bms_ble:
+  - ble_client_id: client0
+    # Use JK04 for hw <= 3.0 (e.g. JK-B2A16S hw 3.0, sw 3.3.0)
+    # Use JK02_24S for hw >= 6.0 and < 11.0 (e.g. JK-B2A24S20P hw 8.x, sw 8.1.2H)
+    # Use JK02_32S for hw >= 11.0 (e.g. JK-B2A8S20P hw 11.XW, sw 11.26)
+    protocol_version: JK02_32S
+    throttle: 5s
+    id: bms0
+
+text_sensor:
+  - platform: jk_bms_ble
+    hardware_version:
+      name: "hardware version"
+    software_version:
+      name: "software version"
+```

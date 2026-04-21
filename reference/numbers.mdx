@@ -1,0 +1,213 @@
+---
+title: "Number Entities: Writable BLE BMS Settings Reference"
+description: "All writable number entities in jk_bms_ble: cell voltage thresholds, current limits, temperature protection, balancing settings, and calibration offsets."
+---
+
+Number entities are the primary mechanism for configuring the JK-BMS over Bluetooth. Unlike sensors, which are read-only, number entities are fully read/write: ESPHome reads the current value from the BMS on startup and writes new values back to the BMS when you change them in Home Assistant or via an ESPHome API call. All number entities on this page belong to the `jk_bms_ble` platform and are BLE-only. There is no equivalent write capability in the UART (`jk_bms`) component.
+
+<Warning>
+Protection thresholds directly control when the BMS cuts power to protect the battery. Setting values outside the safe operating range of your cells can cause irreversible damage, fire, or explosion. Always consult your battery manufacturer's datasheet before changing any protection setting.
+</Warning>
+
+<Info>
+All number entities are assigned `entity_category: config` by default, which keeps them out of the main dashboard view and groups them in the device configuration panel in Home Assistant.
+</Info>
+
+---
+
+## Cell Configuration
+
+Settings that describe the pack structure and per-cell operating window.
+
+| Key | Unit | Min | Max | Step | Description |
+|---|---|---|---|---|---|
+| `cell_count` | — | 2 | 32 | 1 | Number of cells in series in the pack |
+| `total_battery_capacity` | Ah | 2 | 20000 | 1 | Nominal pack capacity used for SOC calculation |
+| `cell_voltage_overvoltage_protection` | V | 1.2 | 4.35 | 0.001 | Per-cell voltage at which charging is cut |
+| `cell_voltage_overvoltage_recovery` | V | 1.2 | 4.35 | 0.001 | Per-cell voltage at which charging is re-enabled after OVP |
+| `cell_voltage_undervoltage_protection` | V | 1.2 | 4.35 | 0.001 | Per-cell voltage at which discharging is cut |
+| `cell_voltage_undervoltage_recovery` | V | 1.2 | 4.35 | 0.001 | Per-cell voltage at which discharging resumes after UVP |
+| `smart_sleep_voltage` | V | 0.003 | 3.65 | 0.001 | Cell voltage threshold for entering smart sleep mode |
+| `cell_soc100_voltage` | V | 0.003 | 3.65 | 0.001 | Cell voltage mapped to 100% SOC |
+| `cell_soc0_voltage` | V | 0.003 | 3.65 | 0.001 | Cell voltage mapped to 0% SOC |
+| `cell_request_charge_voltage` | V | 0.003 | 3.65 | 0.001 | Requested absorption charge voltage per cell |
+| `cell_request_float_voltage` | V | 0.003 | 3.65 | 0.001 | Requested float maintenance voltage per cell |
+| `cell_request_charge_voltage_time` | h | 0 | 18.2 | 0.1 | Time limit for absorption charge phase |
+| `cell_request_float_voltage_time` | h | 0 | 18.2 | 0.1 | Time limit for float charge phase |
+| `power_off_voltage` | V | 1.20 | 4.35 | 0.01 | Cell voltage at which the BMS powers off completely |
+
+```yaml
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    cell_count:
+      name: "Cell Count"
+    total_battery_capacity:
+      name: "Total Battery Capacity"
+    cell_voltage_overvoltage_protection:
+      name: "Cell OVP"
+    cell_voltage_overvoltage_recovery:
+      name: "Cell OVP Recovery"
+    cell_voltage_undervoltage_protection:
+      name: "Cell UVP"
+    cell_voltage_undervoltage_recovery:
+      name: "Cell UVP Recovery"
+    power_off_voltage:
+      name: "Power Off Voltage"
+```
+
+---
+
+## Balancing
+
+Settings that control when and how aggressively the active balancer operates.
+
+| Key | Unit | Min | Max | Step | Description |
+|---|---|---|---|---|---|
+| `balance_trigger_voltage` | V | 0.003 | 1.0 | 0.001 | Minimum cell voltage delta required to start balancing |
+| `balance_starting_voltage` | V | 1.20 | 4.25 | 0.01 | Minimum average cell voltage required before balancing begins |
+| `max_balance_current` | A | 0.3 | 15.0 | 0.1 | Maximum current the balancer is allowed to draw |
+| `re_bulk_soc` | % | 0 | 50 | 1 | SOC level at which the BMS re-initiates a bulk charge cycle |
+
+```yaml
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    balance_trigger_voltage:
+      name: "Balance Trigger Voltage"
+    balance_starting_voltage:
+      name: "Balance Starting Voltage"
+    max_balance_current:
+      name: "Max Balance Current"
+```
+
+---
+
+## Current Limits
+
+Maximum continuous charge and discharge current ratings.
+
+| Key | Unit | Min | Max | Step | Description |
+|---|---|---|---|---|---|
+| `max_charge_current` | A | 1.0 | 600.1 | 0.1 | Maximum continuous charge current |
+| `max_discharge_current` | A | 1.0 | 1200.1 | 0.1 | Maximum continuous discharge current |
+
+```yaml
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    max_charge_current:
+      name: "Max Charge Current"
+    max_discharge_current:
+      name: "Max Discharge Current"
+```
+
+---
+
+## Overcurrent and Short-Circuit Protection
+
+Delay and recovery time settings for overcurrent and short-circuit protection events.
+
+| Key | Unit | Min | Max | Step | Description |
+|---|---|---|---|---|---|
+| `charge_overcurrent_protection_delay` | s | 2 | 600 | 1 | Time above max charge current before OCP triggers |
+| `charge_overcurrent_protection_recovery_time` | s | 2 | 600 | 1 | Recovery timeout after a charge OCP event |
+| `discharge_overcurrent_protection_delay` | s | 2 | 600 | 1 | Time above max discharge current before OCP triggers |
+| `discharge_overcurrent_protection_recovery_time` | s | 2 | 600 | 1 | Recovery timeout after a discharge OCP event |
+| `short_circuit_protection_delay` | μs | 0 | 1000000 | 1 | Blanking time before short-circuit protection trips |
+| `short_circuit_protection_recovery_time` | s | 2 | 600 | 1 | Recovery timeout after a short-circuit event |
+
+```yaml
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    charge_overcurrent_protection_delay:
+      name: "Charge OCP Delay"
+    charge_overcurrent_protection_recovery_time:
+      name: "Charge OCP Recovery Time"
+    discharge_overcurrent_protection_delay:
+      name: "Discharge OCP Delay"
+    discharge_overcurrent_protection_recovery_time:
+      name: "Discharge OCP Recovery Time"
+    short_circuit_protection_delay:
+      name: "Short Circuit Protection Delay"
+    short_circuit_protection_recovery_time:
+      name: "Short Circuit Protection Recovery Time"
+```
+
+---
+
+## Temperature Protection
+
+Overtemperature and undertemperature trip points with their recovery hysteresis values.
+
+| Key | Unit | Min | Max | Step | Description |
+|---|---|---|---|---|---|
+| `charge_overtemperature_protection` | °C | 30 | 80 | 0.1 | Temperature at which charging is suspended (OTP) |
+| `charge_overtemperature_protection_recovery` | °C | 30 | 80 | 0.1 | Temperature at which charging resumes after charge OTP |
+| `discharge_overtemperature_protection` | °C | 30 | 80 | 0.1 | Temperature at which discharging is suspended (OTP) |
+| `discharge_overtemperature_protection_recovery` | °C | 30 | 80 | 0.1 | Temperature at which discharging resumes after discharge OTP |
+| `charge_undertemperature_protection` | °C | -45 | 20 | 0.1 | Temperature at which charging is suspended (UTP) |
+| `charge_undertemperature_protection_recovery` | °C | -45 | 20 | 0.1 | Temperature at which charging resumes after charge UTP |
+| `discharge_undertemperature_protection` | °C | -40 | 100 | 1 | Temperature at which discharging is suspended (UTP) |
+| `discharge_undertemperature_protection_recovery` | °C | -40 | 100 | 1 | Temperature at which discharging resumes after discharge UTP |
+| `power_tube_overtemperature_protection` | °C | 50 | 110 | 0.1 | MOSFET temperature at which the BMS shuts down (MOS OTP) |
+| `power_tube_overtemperature_protection_recovery` | °C | 50 | 110 | 0.1 | MOSFET temperature at which the BMS recovers after MOS OTP |
+
+```yaml
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    charge_overtemperature_protection:
+      name: "Charge OTP"
+    charge_overtemperature_protection_recovery:
+      name: "Charge OTP Recovery"
+    discharge_overtemperature_protection:
+      name: "Discharge OTP"
+    discharge_overtemperature_protection_recovery:
+      name: "Discharge OTP Recovery"
+    charge_undertemperature_protection:
+      name: "Charge UTP"
+    charge_undertemperature_protection_recovery:
+      name: "Charge UTP Recovery"
+    power_tube_overtemperature_protection:
+      name: "MOS OTP"
+    power_tube_overtemperature_protection_recovery:
+      name: "MOS OTP Recovery"
+```
+
+---
+
+## Heating Control
+
+Settings for the optional battery heating pad, available on JK02_32S hardware.
+
+| Key | Unit | Min | Max | Step | Description |
+|---|---|---|---|---|---|
+| `heating_start_temperature` | °C | -40 | 100 | 1 | Temperature at which the heating pad activates |
+| `heating_stop_temperature` | °C | -40 | 100 | 1 | Temperature at which the heating pad deactivates |
+
+---
+
+## Calibration
+
+Factory-style calibration offsets for voltage and current measurements.
+
+| Key | Unit | Min | Max | Step | Description |
+|---|---|---|---|---|---|
+| `voltage_calibration` | V | 1.0 | 200.0 | 0.01 | Voltage measurement calibration offset |
+| `current_calibration` | A | 0.0 | 1000.0 | 0.001 | Current measurement calibration offset |
+
+---
+
+## Timing
+
+Timing parameters for precharge and smart sleep.
+
+| Key | Unit | Min | Max | Step | Description |
+|---|---|---|---|---|---|
+| `discharge_precharge_time` | s | 0 | 255 | 1 | Duration of the precharge phase before full discharge enabling |
+
+<Tip>
+After writing any number value, the BMS applies the change immediately. ESPHome reads back the stored value on the next settings poll (triggered by the `retrieve_settings` button) to confirm the write was accepted.
+</Tip>

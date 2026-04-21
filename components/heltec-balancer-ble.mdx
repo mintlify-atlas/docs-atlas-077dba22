@@ -1,0 +1,337 @@
+---
+title: "heltec_balancer_ble: NEEY/Heltec Balancer Component"
+description: "Monitor and control NEEY/Heltec 4A Smart Active Balancers over BLE with ESPHome on ESP32. Covers sensors, numbers, selects, switches, and buttons."
+---
+
+The `heltec_balancer_ble` component connects to **NEEY and Heltec 4A Smart Active Balancers** over Bluetooth Low Energy on ESP32. These active balancers are sold under multiple brand names including NEEY, Heltec, and others, and are commonly used alongside JK-BMS packs.
+
+The component exposes cell voltages and resistances, temperature readings, balancing state, fault bitmasks, and writable configuration parameters (cell count, trigger voltage, current limits, and more). It also provides select entities for battery type and buzzer mode, and buttons for on-demand data retrieval.
+
+<Note>
+  Requires ESPHome **2025.11.0** or newer and an **ESP32** target. The component auto-loads `binary_sensor`, `button`, `number`, `select`, `sensor`, `switch`, and `text_sensor`.
+</Note>
+
+## Supported Devices
+
+<CardGroup cols={2}>
+  <Card title="NEEY 4A Smart Active Balancer" icon="bolt">
+    Multiple generations sold under the NEEY brand. Identified by a 4-wire connector and Bluetooth advertising name.
+  </Card>
+  <Card title="Heltec 4A Smart Active Balancer" icon="bolt">
+    Equivalent hardware sold under the Heltec brand label.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Use a BLE scanner app to confirm the device MAC address and that the balancer is advertising before adding it to your configuration.
+</Tip>
+
+## Hardware Setup
+
+The balancer communicates entirely over Bluetooth — no wiring to the ESP32 is needed beyond power. Take note of the MAC address printed on the device label or visible in a BLE scanner.
+
+## Configuration
+
+<Steps>
+  <Step title="Enable the BLE tracker">
+    Add `esp32_ble_tracker` with passive scanning.
+  </Step>
+  <Step title="Declare a ble_client">
+    Reference the balancer MAC address.
+  </Step>
+  <Step title="Declare heltec_balancer_ble">
+    Set the `ble_client_id` and optional `throttle`.
+  </Step>
+  <Step title="Add entity platforms">
+    Each platform block references the balancer hub by its ID.
+  </Step>
+</Steps>
+
+## Complete Example
+
+The following configuration is drawn from `esp32-heltec-balancer-ble-example.yaml` in the upstream repository.
+
+```yaml
+substitutions:
+  name: heltec-balancer
+  device_description: "Monitor and control a Heltec/NEEY 4A balancer via bluetooth"
+  external_components_source: github://syssi/esphome-jk-bms@main
+  mac_address: C8:47:8C:E1:E2:AA
+
+esphome:
+  name: ${name}
+  friendly_name: ${name}
+  comment: ${device_description}
+  project:
+    name: "syssi.esphome-jk-bms"
+    version: 2.4.0
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: ${external_components_source}
+    refresh: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  platform: esphome
+  on_begin:
+    then:
+      - switch.turn_off: ble_client_switch0
+      - logger.log: "BLE connection suspended for OTA update"
+
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: INFO
+    esp32_ble_client: INFO
+
+api:
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+ble_client:
+  - mac_address: ${mac_address}
+    id: client0
+
+heltec_balancer_ble:
+  - ble_client_id: client0
+    throttle: 5s
+    id: balancer0
+
+binary_sensor:
+  - platform: heltec_balancer_ble
+    heltec_balancer_ble_id: balancer0
+    balancing:
+      name: "balancing"
+    error_charging:
+      name: "error charging"
+    error_discharging:
+      name: "error discharging"
+    error_system_overheating:
+      name: "error system overheating"
+    online_status:
+      name: "online status"
+
+button:
+  - platform: heltec_balancer_ble
+    heltec_balancer_ble_id: balancer0
+    retrieve_settings:
+      name: "retrieve settings"
+      id: retrieve_settings_button0
+    retrieve_device_info:
+      name: "retrieve device info"
+    retrieve_factory_defaults:
+      name: "retrieve factory defaults"
+
+number:
+  - platform: heltec_balancer_ble
+    heltec_balancer_ble_id: balancer0
+    cell_count:
+      name: "cell count"
+    balance_trigger_voltage:
+      name: "balance trigger voltage"
+    max_balance_current:
+      name: "max balance current"
+    balance_sleep_voltage:
+      name: "balance sleep voltage"
+    balance_start_voltage:
+      name: "balance start voltage"
+    balance_stop_diff_voltage:
+      name: "balance stop diff voltage"
+    nominal_battery_capacity:
+      name: "nominal battery capacity"
+
+sensor:
+  - platform: heltec_balancer_ble
+    heltec_balancer_ble_id: balancer0
+    min_cell_voltage:
+      name: "min cell voltage"
+    max_cell_voltage:
+      name: "max cell voltage"
+    delta_cell_voltage:
+      name: "delta cell voltage"
+    average_cell_voltage:
+      name: "average cell voltage"
+    cell_voltage_1:
+      name: "cell voltage 1"
+    # … cell_voltage_2 through cell_voltage_24
+    cell_resistance_1:
+      name: "cell resistance 1"
+    # … cell_resistance_2 through cell_resistance_24
+    total_voltage:
+      name: "total voltage"
+    temperature_sensor_1:
+      name: "temperature sensor 1"
+    temperature_sensor_2:
+      name: "temperature sensor 2"
+    total_runtime:
+      name: "total runtime"
+    balancing_current:
+      name: "balancing current"
+    cell_detection_failed_bitmask:
+      name: "cell detection failed bitmask"
+    cell_overvoltage_bitmask:
+      name: "cell overvoltage bitmask"
+    cell_undervoltage_bitmask:
+      name: "cell undervoltage bitmask"
+    cell_polarity_error_bitmask:
+      name: "cell polarity error bitmask"
+    cell_excessive_line_resistance_bitmask:
+      name: "cell excessive line resistance bitmask"
+
+select:
+  - platform: heltec_balancer_ble
+    heltec_balancer_ble_id: balancer0
+    buzzer_mode:
+      name: "buzzer mode"
+    battery_type:
+      name: "battery type"
+
+switch:
+  - platform: heltec_balancer_ble
+    heltec_balancer_ble_id: balancer0
+    balancer:
+      name: "balancer"
+
+  - platform: ble_client
+    ble_client_id: client0
+    name: "enable bluetooth connection"
+    id: ble_client_switch0
+
+text_sensor:
+  - platform: heltec_balancer_ble
+    heltec_balancer_ble_id: balancer0
+    operation_status:
+      name: "operation status"
+    total_runtime_formatted:
+      name: "total runtime formatted"
+    buzzer_mode:
+      name: "buzzer mode"
+    battery_type:
+      name: "battery type"
+
+interval:
+  - interval: 30min
+    then:
+      - button.press: retrieve_settings_button0
+```
+
+## Component Configuration
+
+<ParamField path="ble_client_id" type="string" required>
+  ID of the `ble_client` entry that manages the Bluetooth connection to the balancer.
+</ParamField>
+
+<ParamField path="throttle" type="time" default="2s">
+  Minimum time between consecutive entity updates. Default is `2s`.
+</ParamField>
+
+<ParamField path="update_interval" type="time" default="5s">
+  How often the component polls the balancer for new data.
+</ParamField>
+
+<ParamField path="id" type="string">
+  Optional ID used to reference this balancer from sensor/number/select/switch platform blocks.
+</ParamField>
+
+<Note>
+  The example uses a 30-minute `interval` to periodically re-request settings from the balancer. This is recommended because the balancer does not push settings updates proactively.
+</Note>
+
+## OTA Updates
+
+<Warning>
+  Turn off the BLE client switch before performing OTA updates. Use the same `ota.on_begin` pattern shown in the example to automate this.
+</Warning>
+
+## Supported Platforms
+
+### Sensor
+
+`cell_voltage_1` through `cell_voltage_24` — unit: V, accuracy: 3 decimals.  
+`cell_resistance_1` through `cell_resistance_24` — unit: Ω, accuracy: 3 decimals.
+
+| Key | Unit | Notes |
+|-----|------|-------|
+| `min_cell_voltage` | V | Lowest cell voltage |
+| `max_cell_voltage` | V | Highest cell voltage |
+| `min_voltage_cell` | — | Index of lowest-voltage cell |
+| `max_voltage_cell` | — | Index of highest-voltage cell |
+| `delta_cell_voltage` | V | Spread between min and max |
+| `average_cell_voltage` | V | Mean cell voltage |
+| `total_voltage` | V | Pack voltage |
+| `current` | A | Pack current |
+| `temperature_sensor_1` | °C | NTC temperature 1 |
+| `temperature_sensor_2` | °C | NTC temperature 2 |
+| `total_runtime` | s | Cumulative runtime (total-increasing) |
+| `balancing_current` | A | Active balancing current |
+| `errors_bitmask` | — | General error flags (diagnostic) |
+| `cell_detection_failed_bitmask` | — | Cells where detection failed (diagnostic) |
+| `cell_overvoltage_bitmask` | — | Cells in overvoltage (diagnostic) |
+| `cell_undervoltage_bitmask` | — | Cells in undervoltage (diagnostic) |
+| `cell_polarity_error_bitmask` | — | Cells with reversed polarity (diagnostic) |
+| `cell_excessive_line_resistance_bitmask` | — | Cells with high wire resistance (diagnostic) |
+
+### Binary Sensor
+
+| Key | Notes |
+|-----|-------|
+| `balancing` | True while balancing is active |
+| `error_charging` | Charging error state |
+| `error_discharging` | Discharging error state |
+| `error_system_overheating` | System overheating error |
+| `online_status` | Connectivity (diagnostic) |
+
+### Switch
+
+| Key | Register | Notes |
+|-----|----------|-------|
+| `balancer` | `0x0D` | Enable/disable active cell balancing |
+
+### Select
+
+| Key | Register | Options |
+|-----|----------|---------|
+| `buzzer_mode` | `0x14` | `Off`, `Beep once`, `Beep regular` |
+| `battery_type` | `0x15` | `NCM`, `LFP`, `LTO`, `PbAc` |
+
+### Number
+
+All numbers are in the `config` entity category.
+
+| Key | Unit | Min | Max | Step |
+|-----|------|-----|-----|------|
+| `cell_count` | — | 2 | 24 | 1 |
+| `balance_trigger_voltage` | V | 0.001 | 1.0 | 0.001 |
+| `max_balance_current` | A | 1.0 | 15.0 | 0.001 |
+| `balance_sleep_voltage` | V | 1.0 | 4.5 | 0.001 |
+| `balance_start_voltage` | V | 1.0 | 4.5 | 0.001 |
+| `balance_stop_diff_voltage` | V | 0.001 | 1.0 | 0.001 |
+| `nominal_battery_capacity` | Ah | 1 | 2000 | 1 |
+
+### Button
+
+| Key | Command | Notes |
+|-----|---------|-------|
+| `retrieve_settings` | `0x04` | Request current settings from balancer |
+| `retrieve_device_info` | `0x01` | Request device information |
+| `retrieve_factory_defaults` | `0x03` | Request factory default values |
+
+### Text Sensor
+
+| Key | Notes |
+|-----|-------|
+| `errors` | Decoded error string (diagnostic) |
+| `operation_status` | Human-readable operation status |
+| `total_runtime_formatted` | Runtime as `0d 0h 0m 0s` |
+| `buzzer_mode` | Current buzzer mode as string |
+| `battery_type` | Current battery type as string |

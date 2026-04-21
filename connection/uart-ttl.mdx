@@ -1,0 +1,293 @@
+---
+title: 'Connect a JK-BMS over UART-TTL (GPS/RS485 port)'
+description: 'Wire a JK-BMS to an ESP32 or ESP8266 via the 4-pin JST 1.25mm UART-TTL port and configure the jk_modbus and jk_bms ESPHome components.'
+---
+
+The JK-BMS exposes a 4-pin JST 1.25mm connector labelled **RS485** on the housing, but the signals on this port are plain UART-TTL — no RS485 transceiver is required. This port is sometimes called the **GPS port** in the firmware source. You connect it directly to any UART-capable GPIO pair on an ESP32 or ESP8266, configure `jk_modbus` as the transport layer and `jk_bms` as the sensor platform, and every cell voltage, temperature, protection threshold, and switch is immediately available in ESPHome or Home Assistant.
+
+<Note>
+A hardware UART is strongly recommended over a software UART at this baudrate. The BMS communicates at 115200 baud, and a software UART may produce framing errors or missed frames under load.
+</Note>
+
+## Wiring
+
+The connector is a **4-pin JST with 1.25mm pitch**. Pin 1 (GND) is closest to the locking tab edge of the housing.
+
+```text
+              UART-TTL
+┌──────────┐                ┌─────────┐
+│          │<----- RX ----->│         │
+│  JK-BMS  │<----- TX ----->│ ESP32/  │
+│          │<----- GND ---->│ ESP8266 │<-- 3.3V
+│          │                │         │<-- GND
+└──────────┘                └─────────┘
+
+# UART-TTL socket (4 Pin, JST 1.25mm pitch)
+┌─── ─────── ────┐
+│                │
+│ O   O   O   O  │
+│GND  RX  TX VBAT│
+└────────────────┘
+  │   │   │
+  │   │   └─── GPIO17 (`rx_pin`)
+  │   └─────── GPIO16 (`tx_pin`)
+  └─────────── GND
+```
+
+<Warning>
+Do **not** connect the VBAT pin to the ESP. The VBAT rail carries the full battery pack voltage and will destroy a 3.3 V microcontroller instantly.
+</Warning>
+
+The cross-over wiring is intentional: the BMS **TX** pin connects to the ESP **RX** pin and vice-versa.
+
+| BMS pin | ESP32 pin (default) | ESP8266 pin (default) |
+|---------|--------------------|-----------------------|
+| GND     | GND                | GND                   |
+| RX      | GPIO16 (tx\_pin)   | GPIO4 (tx\_pin)       |
+| TX      | GPIO17 (rx\_pin)   | GPIO5 (rx\_pin)       |
+| VBAT    | — (do not connect) | — (do not connect)    |
+
+You can reassign the GPIO numbers freely in the `substitutions` block of your YAML config.
+
+## Setup
+
+<Steps>
+  <Step title="Install the external component">
+    Add the `external_components` block to your ESPHome YAML so that ESPHome fetches the `jk_modbus` and `jk_bms` components from the syssi repository.
+
+    ```yaml
+    external_components:
+      - source: github://syssi/esphome-jk-bms@main
+        refresh: 0s
+    ```
+  </Step>
+
+  <Step title="Declare the UART bus">
+    Add a `uart` entry that matches the GPIO pins you wired and sets the required baudrate and receive buffer size.
+
+    <Tabs>
+      <Tab title="ESP32">
+        ```yaml
+        substitutions:
+          tx_pin: GPIO16
+          rx_pin: GPIO17
+
+        uart:
+          - id: uart_0
+            baud_rate: 115200
+            rx_buffer_size: 384
+            tx_pin: ${tx_pin}
+            rx_pin: ${rx_pin}
+        ```
+      </Tab>
+      <Tab title="ESP8266">
+        ```yaml
+        substitutions:
+          tx_pin: GPIO4
+          rx_pin: GPIO5
+
+        uart:
+          - id: uart_0
+            baud_rate: 115200
+            rx_buffer_size: 384
+            tx_pin: ${tx_pin}
+            rx_pin: ${rx_pin}
+        ```
+
+        <Note>
+          On ESP8266 the hardware serial port is also used by the logger at startup. Set `logger: baud_rate: 0` to disable serial logging and free the hardware UART for BMS communication.
+        </Note>
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Add jk_modbus and jk_bms">
+    `jk_modbus` provides the framing and request/response engine. `jk_bms` sits on top and maps the decoded registers to ESPHome entities.
+
+    ```yaml
+    jk_modbus:
+      - id: modbus0
+        uart_id: uart_0
+        rx_timeout: 50ms
+
+    jk_bms:
+      - id: bms0
+        jk_modbus_id: modbus0
+        update_interval: 5s
+    ```
+
+    The `rx_timeout` of 50 ms is the default and works reliably at 115200 baud. Increase it only if you observe incomplete frames in the logs.
+  </Step>
+
+  <Step title="Expose sensors, switches, and text sensors">
+    Declare the entities you need. The example below is the full set from the reference configuration. Remove any entries you do not want to expose.
+
+    ```yaml
+    binary_sensor:
+      - platform: jk_bms
+        balancing:
+          name: "balancing"
+        balancing_switch:
+          name: "balancing switch"
+        charging:
+          name: "charging"
+        discharging:
+          name: "discharging"
+        dedicated_charger_switch:
+          name: "dedicated charger switch"
+        online_status:
+          name: "online status"
+
+    sensor:
+      - platform: jk_bms
+        min_cell_voltage:
+          name: "min cell voltage"
+        max_cell_voltage:
+          name: "max cell voltage"
+        delta_cell_voltage:
+          name: "delta cell voltage"
+        average_cell_voltage:
+          name: "average cell voltage"
+        cell_voltage_1:
+          name: "cell voltage 1"
+        # … add cell_voltage_2 through cell_voltage_24 as needed
+        power_tube_temperature:
+          name: "power tube temperature"
+        temperature_sensor_1:
+          name: "temperature sensor 1"
+        temperature_sensor_2:
+          name: "temperature sensor 2"
+        total_voltage:
+          name: "total voltage"
+        current:
+          name: "current"
+        power:
+          name: "power"
+        capacity_remaining:
+          name: "capacity remaining"
+        charging_cycles:
+          name: "charging cycles"
+        total_runtime:
+          name: "total runtime"
+        actual_battery_capacity:
+          name: "actual battery capacity"
+
+    switch:
+      - platform: jk_bms
+        charging:
+          name: "charging"
+        discharging:
+          name: "discharging"
+
+    text_sensor:
+      - platform: jk_bms
+        errors:
+          name: "errors"
+        operation_mode:
+          name: "operation mode"
+        battery_type:
+          name: "battery type"
+        software_version:
+          name: "software version"
+        manufacturer:
+          name: "manufacturer"
+        total_runtime_formatted:
+          name: "total runtime formatted"
+    ```
+  </Step>
+
+  <Step title="Flash and verify">
+    Compile and upload the firmware. Open the ESPHome logs and confirm you see lines like:
+
+    ```text
+    [sensor:127]: 'jk-bms total voltage': Sending state 53.64000 V with 2 decimals of accuracy
+    [sensor:127]: 'jk-bms current': Sending state -0.00000 A with 2 decimals of accuracy
+    ```
+
+    If the log shows repeated `[jk_modbus] Timeout waiting for response` messages, double-check that the TX and RX lines are not swapped and that the `uart` baud rate is 115200.
+  </Step>
+</Steps>
+
+## Minimal complete configuration
+
+The YAML below is the smallest working configuration for an ESP32. Copy it as a starting point and expand the sensor list to suit your needs.
+
+```yaml
+substitutions:
+  name: jk-bms
+  external_components_source: github://syssi/esphome-jk-bms@main
+  tx_pin: GPIO16
+  rx_pin: GPIO17
+
+esphome:
+  name: ${name}
+  friendly_name: ${name}
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: ${external_components_source}
+    refresh: 0s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  platform: esphome
+
+api:
+
+uart:
+  - id: uart_0
+    baud_rate: 115200
+    rx_buffer_size: 384
+    tx_pin: ${tx_pin}
+    rx_pin: ${rx_pin}
+
+jk_modbus:
+  - id: modbus0
+    uart_id: uart_0
+    rx_timeout: 50ms
+
+jk_bms:
+  - id: bms0
+    jk_modbus_id: modbus0
+    update_interval: 5s
+
+sensor:
+  - platform: jk_bms
+    total_voltage:
+      name: "total voltage"
+    current:
+      name: "current"
+    capacity_remaining:
+      name: "capacity remaining"
+    power_tube_temperature:
+      name: "power tube temperature"
+```
+
+## Debugging
+
+Enable the UART debug output to inspect the raw serial traffic if sensors are not updating:
+
+```yaml
+logger:
+  level: DEBUG
+
+uart:
+  - id: uart_0
+    baud_rate: 115200
+    rx_buffer_size: 384
+    tx_pin: ${tx_pin}
+    rx_pin: ${rx_pin}
+    debug:
+      direction: BOTH
+```
+
+<Tip>
+If you are using an ESP8266 and see garbled output at boot before the BMS frames arrive, add `baud_rate: 0` under `logger:` to disable the serial console and free the hardware UART exclusively for the BMS.
+</Tip>
